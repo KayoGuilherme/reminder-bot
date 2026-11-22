@@ -1,0 +1,51 @@
+spring:
+  application:
+    name: bot
+  messages:
+    basename: messages
+    # Language comes only from app.language, never from the host locale.
+    fallback-to-system-locale: false
+  datasource:
+    url: ${DB_URL:}
+    username: ${DB_USER:}
+    password: ${DB_PASSWORD:}
+  jpa:
+    open-in-view: false
+    show-sql: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+
+# Empty defaults (no secrets) make a missing variable fail @Validated binding with the property name.
+app:
+  timezone: ${APP_TIMEZONE:America/Fortaleza}
+  language: ${APP_LANGUAGE:en}
+  telegram:
+    enabled: ${APP_TELEGRAM_ENABLED:true}
+    bot-token: ${TELEGRAM_BOT_TOKEN:}
+    allowed-user-id: ${TELEGRAM_ALLOWED_USER_ID:}
+  groq:
+    api-key: ${GROQ_API_KEY:}
+  gemini:
+    api-key: ${GEMINI_API_KEY:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+
+logging:
+  level:
+    root: INFO
+    com.kayo.reminder: INFO

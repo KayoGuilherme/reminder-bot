@@ -1,0 +1,11 @@
+# Local development only (auto-loaded by `docker compose`). Skip it on a server with:
+#   docker compose -f docker-compose.yml up -d
+services:
+  db:
+    ports:
+      - "127.0.0.1:5432:5432"
+  app:
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+    ports:
+      - "127.0.0.1:8080:8080"

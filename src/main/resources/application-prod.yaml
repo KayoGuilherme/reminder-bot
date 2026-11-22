@@ -1,0 +1,6 @@
+logging:
+  level:
+    root: INFO
+    com.kayo.reminder: INFO
+    org.hibernate.SQL: WARN
+    org.springframework: WARN
