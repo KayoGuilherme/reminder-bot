@@ -4,9 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import ch.qos.logback.classic.Level;
 import com.kayo.reminder.application.port.in.HandleIncomingCommandUseCase;
+import com.kayo.reminder.application.port.in.CreateTaskFromVoiceUseCase;
 import com.kayo.reminder.application.service.IncomingCommandService;
 import com.kayo.reminder.application.service.Messages;
 import com.kayo.reminder.config.AppProperties;
+import com.kayo.reminder.testsupport.TestProperties;
 import com.kayo.reminder.config.AppProperties.Telegram.Retry;
 import com.kayo.reminder.testsupport.LogCapture;
 import java.time.Duration;
@@ -39,12 +41,10 @@ class TelegramFlowTest {
 		source.setDefaultEncoding("UTF-8");
 		source.setFallbackToSystemLocale(false);
 		Retry retry = new Retry(3, Duration.ofMillis(1), Duration.ofMillis(2), Duration.ofSeconds(1));
-		AppProperties props = new AppProperties(ZoneId.of("UTC"), language,
-				new AppProperties.Telegram(FakeTelegramApi.TOKEN, 42L, true, retry),
-				new AppProperties.Groq("g"), new AppProperties.Gemini("m"));
+		AppProperties props = TestProperties.of(ZoneId.of("UTC"), language);
 		IncomingCommandService service = new IncomingCommandService(
 				new TelegramMessageSender(api.client(), retry, FakeTelegramApi.TOKEN, d -> { }),
-				new Messages(source, props));
+				new Messages(source, props), org.mockito.Mockito.mock(CreateTaskFromVoiceUseCase.class));
 		return new TelegramUpdateConsumer(new UpdateAllowlist(42), new TelegramUpdateMapper(), decorate.apply(service));
 	}
 

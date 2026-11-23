@@ -1,56 +1,62 @@
 package com.kayo.reminder.application.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 
+import com.kayo.reminder.application.port.in.CreateTaskFromVoiceUseCase;
 import com.kayo.reminder.application.port.in.IncomingCommand;
-import com.kayo.reminder.application.port.out.Button;
-import com.kayo.reminder.application.port.out.MessageSenderPort;
 import com.kayo.reminder.application.port.out.SendResult;
 import com.kayo.reminder.application.port.out.SendResult.FailureReason;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
+import com.kayo.reminder.testsupport.RecordingSender;
+import com.kayo.reminder.testsupport.TestMessages;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
-import org.springframework.context.support.ResourceBundleMessageSource;
 
 class IncomingCommandServiceTest {
 
 	private final RecordingSender sender = new RecordingSender();
+	private final CreateTaskFromVoiceUseCase createTask = mock(CreateTaskFromVoiceUseCase.class);
 
 	private IncomingCommandService service(String languageTag) {
-		ResourceBundleMessageSource source = new ResourceBundleMessageSource();
-		source.setBasename("messages");
-		source.setDefaultEncoding("UTF-8");
-		source.setFallbackToSystemLocale(false);
-		return new IncomingCommandService(sender, new Messages(source, Locale.forLanguageTag(languageTag)));
+		return new IncomingCommandService(sender, TestMessages.of(languageTag), createTask);
 	}
 
 	private static String english(String key) {
-		return text("en", key);
+		return TestMessages.text("en", key);
 	}
 
 	private static String portuguese(String key) {
-		return text("pt-BR", key);
+		return TestMessages.text("pt-BR", key);
 	}
 
-	private static String text(String tag, String key) {
-		ResourceBundleMessageSource source = new ResourceBundleMessageSource();
-		source.setBasename("messages");
-		source.setDefaultEncoding("UTF-8");
-		source.setFallbackToSystemLocale(false);
-		return source.getMessage(key, null, Locale.forLanguageTag(tag));
+	private record Sent(long chatId, String text) {
+	}
+
+	private java.util.List<Sent> texts() {
+		return sender.texts.stream().map(t -> new Sent(t.chatId(), t.text())).toList();
 	}
 
 	@Test
 	void startRepliesWithUsage() {
 		service("en").handle(IncomingCommand.text(10, 42, 1, "/start"));
-		assertThat(sender.texts).containsExactly(new Sent(10, english("usage")));
+		assertThat(texts()).containsExactly(new Sent(10, english("usage")));
+		verifyNoInteractions(createTask);
 	}
 
 	@Test
 	void helpRepliesWithUsage() {
 		service("en").handle(IncomingCommand.text(10, 42, 1, "/help"));
-		assertThat(sender.texts).containsExactly(new Sent(10, english("usage")));
+		assertThat(texts()).containsExactly(new Sent(10, english("usage")));
+	}
+
+	@Test
+	void usageExplainsHowToCreateATask() {
+		assertThat(english("usage")).contains("voice note").contains("confirm").doesNotContain("can't create");
 	}
 
 	@Test
@@ -59,46 +65,77 @@ class IncomingCommandServiceTest {
 		service.handle(IncomingCommand.text(10, 42, 1, "/help@my_bot"));
 		service.handle(IncomingCommand.text(10, 42, 2, "/start@my_bot  some args"));
 		service.handle(IncomingCommand.text(10, 42, 3, "  /START now"));
-		assertThat(sender.texts).containsOnly(new Sent(10, english("usage"))).hasSize(3);
+		assertThat(texts()).containsOnly(new Sent(10, english("usage"))).hasSize(3);
+		verifyNoInteractions(createTask);
 	}
 
 	@Test
-	void plainTextGetsPlaceholder() {
-		service("en").handle(IncomingCommand.text(10, 42, 1, "remind me tomorrow"));
-		assertThat(sender.texts).containsExactly(new Sent(10, english("not-supported-yet")));
+	void plainTextStartsTheTaskFlow() {
+		IncomingCommand command = IncomingCommand.text(10, 42, 1, "remind me tomorrow at 9");
+		service("en").handle(command);
+		verify(createTask).submit(command);
+		assertThat(sender.texts).isEmpty();
+	}
+
+	@Test
+	void textMentioningStartMidSentenceIsATask() {
+		IncomingCommand command = IncomingCommand.text(10, 42, 1, "please /start");
+		service("en").handle(command);
+		verify(createTask).submit(command);
+	}
+
+	@Test
+	void voiceStartsTheTaskFlow() {
+		IncomingCommand command = IncomingCommand.voice(10, 42, 1, "file-1", 7);
+		service("en").handle(command);
+		verify(createTask).submit(command);
+		assertThat(sender.texts).isEmpty();
 	}
 
 	@Test
 	void unknownCommandGetsPlaceholder() {
 		service("en").handle(IncomingCommand.text(10, 42, 1, "/foo"));
-		assertThat(sender.texts).containsExactly(new Sent(10, english("not-supported-yet")));
+		assertThat(texts()).containsExactly(new Sent(10, english("not-supported-yet")));
+		verifyNoInteractions(createTask);
 	}
 
 	@Test
-	void textMentioningStartMidSentenceIsNotACommand() {
-		service("en").handle(IncomingCommand.text(10, 42, 1, "please /start"));
-		assertThat(sender.texts).containsExactly(new Sent(10, english("not-supported-yet")));
-	}
-
-	@Test
-	void voiceGetsPlaceholder() {
-		service("en").handle(IncomingCommand.voice(10, 42, 1, "file-1", 7));
-		assertThat(sender.texts).containsExactly(new Sent(10, english("not-supported-yet")));
-	}
-
-	@Test
-	void callbackIsAnsweredSilently() {
-		service("en").handle(IncomingCommand.callback(10, 42, 1, "cb-1", "x:1"));
+	void confirmButtonIsAcknowledgedAndHandedToTheFlow() {
+		UUID id = UUID.randomUUID();
+		service("en").handle(IncomingCommand.callback(10, 42, 77, "cb-1", "task:ok:" + id));
 		assertThat(sender.answeredCallbacks).containsExactly("cb-1");
+		verify(createTask).confirm(10, 77, id);
+		verifyNoMoreInteractions(createTask);
 		assertThat(sender.texts).isEmpty();
+	}
+
+	@Test
+	void cancelButtonIsAcknowledgedAndHandedToTheFlow() {
+		UUID id = UUID.randomUUID();
+		service("en").handle(IncomingCommand.callback(10, 42, 77, "cb-2", "task:no:" + id));
+		assertThat(sender.answeredCallbacks).containsExactly("cb-2");
+		verify(createTask).cancel(10, 77, id);
+	}
+
+	@Test
+	void unknownOrMalformedButtonDataIsOnlyAcknowledged() {
+		IncomingCommandService service = service("en");
+		service.handle(IncomingCommand.callback(10, 42, 1, "cb-1", "x:1"));
+		service.handle(IncomingCommand.callback(10, 42, 1, "cb-2", "task:ok:not-a-uuid"));
+		service.handle(IncomingCommand.callback(10, 42, 1, "cb-3", "task:no:"));
+		service.handle(IncomingCommand.callback(10, 42, 1, "cb-4", null));
+		assertThat(sender.answeredCallbacks).containsExactly("cb-1", "cb-2", "cb-3", "cb-4");
+		assertThat(sender.texts).isEmpty();
+		verify(createTask, never()).confirm(org.mockito.ArgumentMatchers.anyLong(), any(), any());
+		verify(createTask, never()).cancel(org.mockito.ArgumentMatchers.anyLong(), any(), any());
 	}
 
 	@Test
 	void repliesInPortuguese() {
 		IncomingCommandService service = service("pt-BR");
 		service.handle(IncomingCommand.text(10, 42, 1, "/start"));
-		service.handle(IncomingCommand.text(10, 42, 2, "hello"));
-		assertThat(sender.texts).containsExactly(
+		service.handle(IncomingCommand.text(10, 42, 2, "/foo"));
+		assertThat(texts()).containsExactly(
 				new Sent(10, portuguese("usage")), new Sent(10, portuguese("not-supported-yet")));
 		assertThat(portuguese("usage")).isNotEqualTo(english("usage"));
 	}
@@ -111,37 +148,5 @@ class IncomingCommandServiceTest {
 		service.handle(IncomingCommand.callback(10, 42, 1, "cb-1", "x"));
 		assertThat(sender.texts).hasSize(1);
 		assertThat(sender.answeredCallbacks).hasSize(1);
-	}
-
-	record Sent(long chatId, String text) {
-	}
-
-	static class RecordingSender implements MessageSenderPort {
-
-		final List<Sent> texts = new ArrayList<>();
-		final List<String> answeredCallbacks = new ArrayList<>();
-		SendResult result = SendResult.ok(1);
-
-		@Override
-		public SendResult sendText(long chatId, String text) {
-			texts.add(new Sent(chatId, text));
-			return result;
-		}
-
-		@Override
-		public SendResult sendWithButtons(long chatId, String text, List<List<Button>> buttons) {
-			throw new UnsupportedOperationException();
-		}
-
-		@Override
-		public SendResult editText(long chatId, int messageId, String text) {
-			throw new UnsupportedOperationException();
-		}
-
-		@Override
-		public SendResult answerCallback(String callbackId) {
-			answeredCallbacks.add(callbackId);
-			return result;
-		}
 	}
 }

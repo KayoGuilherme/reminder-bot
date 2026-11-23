@@ -19,7 +19,11 @@ public record AppProperties(
 		@DefaultValue("en") @NotNull @Pattern(regexp = "en|pt-BR", message = "must be 'en' or 'pt-BR'") String language,
 		@NotNull @Valid Telegram telegram,
 		@NotNull @Valid Groq groq,
-		@NotNull @Valid Gemini gemini) {
+		@NotNull @Valid Gemini gemini,
+		@DefaultValue @Valid Stt stt,
+		@NotNull @Valid Llm llm,
+		@DefaultValue @Valid Voice voice,
+		@DefaultValue @Valid Draft draft) {
 
 	public record Telegram(
 			@NotBlank String botToken,
@@ -55,5 +59,34 @@ public record AppProperties(
 		public String toString() {
 			return "Gemini[apiKey=***]";
 		}
+	}
+
+	/** Speech-to-text (Groq Whisper, OpenAI-compatible); authenticated with {@link Groq#apiKey()}. */
+	public record Stt(
+			@DefaultValue("pt") @NotBlank String language,
+			@DefaultValue("whisper-large-v3-turbo") @NotBlank String model,
+			@DefaultValue("https://api.groq.com/openai/v1") @NotBlank String baseUrl,
+			@DefaultValue("5s") @NotNull @DurationMin(nanos = 1) Duration connectTimeout,
+			@DefaultValue("30s") @NotNull @DurationMin(nanos = 1) Duration readTimeout) {
+	}
+
+	/** An OpenAI-compatible chat-completions provider (Groq or Gemini) used to parse tasks. */
+	public record Llm(
+			@NotBlank String baseUrl,
+			@NotBlank String model,
+			@NotBlank String apiKey,
+			@DefaultValue("5s") @NotNull @DurationMin(nanos = 1) Duration connectTimeout,
+			@DefaultValue("30s") @NotNull @DurationMin(nanos = 1) Duration readTimeout) {
+
+		@Override
+		public String toString() {
+			return "Llm[baseUrl=" + baseUrl + ", model=" + model + ", apiKey=***]";
+		}
+	}
+
+	public record Voice(@DefaultValue("60") @Min(1) int maxSeconds) {
+	}
+
+	public record Draft(@DefaultValue("10m") @NotNull @DurationMin(nanos = 1) Duration ttl) {
 	}
 }

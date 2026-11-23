@@ -121,10 +121,60 @@ class AppPropertiesTest {
 
 	@Test
 	void secretsAreMaskedInToString() {
-		runner().run(context -> {
+		runner("LLM_API_KEY=llm-secret").run(context -> {
 			String text = context.getBean(AppProperties.class).toString();
-			assertThat(text).doesNotContain("bot-token-secret", "groq-secret", "gemini-secret");
+			assertThat(text).doesNotContain("bot-token-secret", "groq-secret", "gemini-secret", "llm-secret");
 		});
+	}
+
+	@Test
+	void voiceTaskSettingsDefaults() {
+		runner().run(context -> {
+			AppProperties props = context.getBean(AppProperties.class);
+			assertThat(props.stt().language()).isEqualTo("pt");
+			assertThat(props.stt().model()).isEqualTo("whisper-large-v3-turbo");
+			assertThat(props.stt().connectTimeout()).isEqualTo(Duration.ofSeconds(5));
+			assertThat(props.stt().readTimeout()).isEqualTo(Duration.ofSeconds(30));
+			assertThat(props.llm().baseUrl()).isEqualTo("https://api.groq.com/openai/v1");
+			assertThat(props.llm().model()).isNotBlank();
+			assertThat(props.voice().maxSeconds()).isEqualTo(60);
+			assertThat(props.draft().ttl()).isEqualTo(Duration.ofMinutes(10));
+		});
+	}
+
+	@Test
+	void sttLanguageCanBeOverridden() {
+		runner("APP_STT_LANGUAGE=en").run(context ->
+				assertThat(context.getBean(AppProperties.class).stt().language()).isEqualTo("en"));
+	}
+
+	@Test
+	void llmKeyFallsBackToGroqKeyAndCanPointAtGemini() {
+		runner().run(context ->
+				assertThat(context.getBean(AppProperties.class).llm().apiKey()).isEqualTo("groq-secret"));
+		runner("LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai", "LLM_MODEL=gemini-x",
+				"LLM_API_KEY=gem-key").run(context -> {
+					AppProperties.Llm llm = context.getBean(AppProperties.class).llm();
+					assertThat(llm.baseUrl()).isEqualTo("https://generativelanguage.googleapis.com/v1beta/openai");
+					assertThat(llm.model()).isEqualTo("gemini-x");
+					assertThat(llm.apiKey()).isEqualTo("gem-key");
+				});
+	}
+
+	@Test
+	void failsWhenLlmKeyBlank() {
+		runner("LLM_API_KEY=").run(context -> assertThat(context)
+				.hasFailed()
+				.getFailure().hasStackTraceContaining("llm.apiKey"));
+	}
+
+	@Test
+	void failsWhenVoiceOrDraftSettingsNotPositive() {
+		runner("APP_VOICE_MAX_SECONDS=0").run(context -> assertThat(context)
+				.hasFailed()
+				.getFailure().hasStackTraceContaining("voice.maxSeconds"));
+		runner("APP_DRAFT_TTL=0s").run(context -> assertThat(context).hasFailed());
+		runner("app.llm.read-timeout=0s").run(context -> assertThat(context).hasFailed());
 	}
 
 	@EnableConfigurationProperties(AppProperties.class)

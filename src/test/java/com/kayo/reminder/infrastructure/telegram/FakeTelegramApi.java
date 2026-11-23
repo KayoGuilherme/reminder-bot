@@ -52,6 +52,10 @@ final class FakeTelegramApi implements AutoCloseable {
 		return new OkHttpTelegramClient(TOKEN, url);
 	}
 
+	String baseUrl() {
+		return "http://127.0.0.1:" + server.getAddress().getPort();
+	}
+
 	synchronized FakeTelegramApi reply(int status, String body) {
 		replies.addLast(new Reply(status, body, false));
 		return this;

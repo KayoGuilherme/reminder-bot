@@ -1,11 +1,16 @@
 package com.kayo.reminder.infrastructure.telegram;
 
 import com.kayo.reminder.application.port.in.HandleIncomingCommandUseCase;
+import com.kayo.reminder.application.port.out.AudioDownloadPort;
 import com.kayo.reminder.application.port.out.MessageSenderPort;
 import com.kayo.reminder.config.AppProperties;
+import com.kayo.reminder.infrastructure.http.SingleRetry;
+import com.kayo.reminder.infrastructure.http.RestClients;
+import okhttp3.OkHttpClient;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.web.client.RestClient;
 import org.telegram.telegrambots.client.okhttp.OkHttpTelegramClient;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 
@@ -17,6 +22,19 @@ public class TelegramConfiguration {
 	@Bean
 	TelegramClient telegramClient(AppProperties properties) {
 		return new OkHttpTelegramClient(properties.telegram().botToken());
+	}
+
+	/** Downloads use their own client so the configured timeouts do not change how messages are sent. */
+	@Bean
+	AudioDownloadPort audioDownloadPort(AppProperties properties) {
+		OkHttpClient http = new OkHttpClient.Builder()
+				.connectTimeout(properties.stt().connectTimeout())
+				.readTimeout(properties.stt().readTimeout())
+				.build();
+		RestClient files = RestClients.create("https://api.telegram.org", properties.stt().connectTimeout(),
+				properties.stt().readTimeout());
+		return new TelegramAudioDownloader(new OkHttpTelegramClient(http, properties.telegram().botToken()), files,
+				properties.telegram().botToken(), new SingleRetry("Telegram download"));
 	}
 
 	@Bean

@@ -2,7 +2,7 @@
 
 A Telegram bot that creates and sends task reminders. Java 21 + Spring Boot, PostgreSQL, Flyway, packaged with Docker. It is designed to run as a **single instance**.
 
-Right now the bot connects to Telegram, answers only its owner and replies to `/start` and `/help`. Text and voice messages get a "not supported yet" reply. Voice transcription, LLM parsing, task creation and the reminder scheduler come in later changes.
+The bot connects to Telegram, answers only its owner and turns a voice note (or plain text) into a task: you say what to do, how urgent it is and by when, the bot shows a summary and saves it only after you press **Confirm**. The reminder scheduler comes in a later change.
 
 ## Required environment variables
 
@@ -24,12 +24,20 @@ Optional variables:
 | --- | --- |
 | `APP_LANGUAGE` | Language of the bot's messages: `en` (default) or `pt-BR`. Any other value stops startup. |
 | `APP_TELEGRAM_ENABLED` | `true` (default) or `false`. When `false` the app starts normally but never connects to Telegram. |
+| `APP_STT_LANGUAGE` | Language of voice notes (Whisper language code), default `pt`. |
+| `LLM_BASE_URL` / `LLM_MODEL` / `LLM_API_KEY` | OpenAI-compatible chat-completions provider that parses tasks. Defaults to Groq (`https://api.groq.com/openai/v1`, `openai/gpt-oss-20b`) with `GROQ_API_KEY`. For Gemini set `LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai`, a Gemini `LLM_MODEL` and `LLM_API_KEY`. |
+| `APP_VOICE_MAX_SECONDS` | Longest accepted voice note, default `60`. |
+| `APP_DRAFT_TTL` | How long an unconfirmed task stays valid, default `10m`. |
+
+Privacy: voice notes are sent to Groq for transcription and the transcribed text to the LLM provider. Audio, transcripts, task text and API keys are never written to the logs.
 
 ## How the bot behaves
 
 - It receives updates by **long polling**, so it needs outbound HTTPS to `api.telegram.org` and no inbound port.
 - **Only `TELEGRAM_ALLOWED_USER_ID` is served.** Updates from anyone else get no reply; the app logs one `WARN` with that user's id and never their message content.
-- `/start` and `/help` reply with a short usage message. Any other text, an unknown command or a voice message replies "not supported yet". Button presses are acknowledged silently.
+- `/start` and `/help` reply with a short usage message. An unknown `/command` replies "not supported yet".
+- **Creating a task**: send a voice note (up to `APP_VOICE_MAX_SECONDS`) or a text such as "preciso enviar o relatório até as 18h, é urgente". The bot replies with the title, urgency and deadline (in `APP_TIMEZONE`) and **Confirm / Cancel** buttons. Confirm saves one `PENDING` task; Cancel discards it. If you give no time, or a time that has already passed, the bot asks you to resend with a time. If you give no urgency it assumes Medium and says so. Drafts live in memory for `APP_DRAFT_TTL` (lost on restart); pressing a button twice, or after that time, never creates a duplicate.
+- If transcription or the LLM fails or times out (one retry for transient errors), you get a friendly error and nothing is saved.
 - Messages come from `messages.properties` (English) and `messages_pt_BR.properties`, chosen by `APP_LANGUAGE`.
 - If Telegram answers 429 the bot waits the requested `retry_after` (up to 30 s); network errors and 5xx are retried up to 3 attempts with backoff. After that the failure is logged and the bot carries on. An error while handling one update is logged (update id only) and never stops polling.
 - To find your numeric user id, message a bot such as `@userinfobot`.
