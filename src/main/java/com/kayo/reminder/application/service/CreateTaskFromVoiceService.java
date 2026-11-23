@@ -153,7 +153,8 @@ public class CreateTaskFromVoiceService implements CreateTaskFromVoiceUseCase {
 			}
 		}
 		log.info("Task {} saved for chat {}", task.id(), chatId);
-		show(chatId, messageId, messages.get("task.saved-header") + "\n\n" + summaries.summary(draft));
+		show(chatId, messageId, messages.get("task.saved-header") + "\n\n" + summaries.summary(draft)
+				+ "\n\n" + messages.get("task.saved-footer"));
 	}
 
 	@Override

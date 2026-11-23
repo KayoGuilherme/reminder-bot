@@ -154,7 +154,7 @@ class CreateTaskFromVoiceServiceTest {
 	void repliesInPortuguese() {
 		service = service("pt-BR", 60);
 		service.submit(voice(7));
-		assertThat(sender.withButtons.get(0).text()).contains("Confirme esta tarefa").contains("Alta");
+		assertThat(sender.withButtons.get(0).text()).contains("Confirme a tarefa").contains("Alta");
 		assertThat(sender.withButtons.get(0).buttons().get(0)).extracting(Button::text)
 				.containsExactly("Confirmar", "Cancelar");
 	}
@@ -268,6 +268,30 @@ class CreateTaskFromVoiceServiceTest {
 		assertThat(sender.edits).hasSize(1);
 		assertThat(sender.edits.get(0).messageId()).isEqualTo(MESSAGE);
 		assertThat(sender.edits.get(0).text()).startsWith(en("task.saved-header")).contains(TITLE);
+	}
+
+	@Test
+	void inPortugueseTheDatesAreDayFirstAndTheSavedMessageIsFriendly() {
+		service = service("pt-BR", 60);
+		UUID id = draftFromVoice();
+		String confirmation = sender.withButtons.get(0).text();
+		service.confirm(CHAT, MESSAGE, id);
+
+		assertThat(confirmation).startsWith("Está certo? Confirme a tarefa:")
+				.contains("\uD83D\uDCDD " + TITLE).contains("\uD83D\uDD34 Urgência: Alta")
+				.contains("\u23F0 Prazo: 22/11/2026 18:00").doesNotContain("2026-11-22");
+		String saved = sender.edits.get(0).text();
+		assertThat(saved).startsWith("Tarefa salva \u2705\n\n\uD83D\uDCDD " + TITLE)
+				.contains("Prazo: 22/11/2026 18:00").endsWith("Eu aviso você quando o prazo estiver chegando.");
+	}
+
+	@Test
+	void inEnglishTheDateKeepsTheIsoFormat() {
+		UUID id = draftFromVoice();
+		service.confirm(CHAT, MESSAGE, id);
+
+		assertThat(sender.edits.get(0).text()).contains("\u23F0 Due: 2026-11-22 18:00")
+				.endsWith("I'll remind you before it's due.");
 	}
 
 	@Test

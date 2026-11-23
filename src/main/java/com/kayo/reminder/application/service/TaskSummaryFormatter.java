@@ -5,17 +5,20 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 
-/** Renders a draft as the lines shown to the owner, with times in the display timezone. */
+/**
+ * Renders a draft as the lines shown to the owner, with times in the display timezone and in the date format of the
+ * configured language ({@code date.pattern}: day first for pt-BR).
+ */
 class TaskSummaryFormatter {
-
-	private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
 	private final Messages messages;
 	private final ZoneId zone;
+	private final DateTimeFormatter time;
 
 	TaskSummaryFormatter(Messages messages, ZoneId zone) {
 		this.messages = messages;
 		this.zone = zone;
+		this.time = DateTimeFormatter.ofPattern(messages.get("date.pattern"));
 	}
 
 	String summary(Draft draft) {
@@ -25,7 +28,8 @@ class TaskSummaryFormatter {
 		}
 		StringBuilder text = new StringBuilder()
 				.append(messages.get("task.summary.title", draft.title())).append('\n')
-				.append(messages.get("task.summary.urgency", urgency)).append('\n')
+				.append(messages.get("task.summary.urgency", urgency,
+						messages.get("tasks.marker." + draft.urgency().name()))).append('\n')
 				.append(messages.get("task.summary.deadline", format(draft.deadlineAt())));
 		if (draft.startAt() != null) {
 			text.append('\n').append(messages.get("task.summary.start", format(draft.startAt())));
@@ -43,6 +47,6 @@ class TaskSummaryFormatter {
 	}
 
 	String format(Instant instant) {
-		return TIME.format(instant.atZone(zone));
+		return time.format(instant.atZone(zone));
 	}
 }

@@ -182,7 +182,8 @@ class ListTasksServiceTest {
 		service("pt-BR", ZoneId.of("UTC")).list(CHAT);
 
 		assertThat(sender.texts.get(0).text()).isEqualTo(TestMessages.text("pt-BR", "tasks.empty"));
-		assertThat(sender.withButtons.get(0).text()).contains("Alta").contains("Prazo:");
+		assertThat(sender.withButtons.get(0).text()).contains("Alta").contains("Prazo:")
+				.containsPattern("\\d{2}/\\d{2}/2026 \\d{2}:\\d{2}");
 		assertThat(sender.withButtons.get(0).buttons().get(0).get(1).text()).startsWith("Cancelar");
 	}
 }

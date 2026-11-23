@@ -48,8 +48,16 @@ public final class LogCapture implements AutoCloseable {
 		return logs;
 	}
 
+	/** A snapshot; other threads (a fake server's) may still be logging, so a clash with a writer is retried. */
 	public List<ILoggingEvent> events() {
-		return List.copyOf(appender.list);
+		while (true) {
+			try {
+				return List.copyOf(appender.list);
+			}
+			catch (java.util.ConcurrentModificationException retry) {
+				Thread.onSpinWait();
+			}
+		}
 	}
 
 	public List<ILoggingEvent> events(Level level) {
@@ -64,7 +72,7 @@ public final class LogCapture implements AutoCloseable {
 	/** Like {@link #allText()} but only for events {@code accept} lets through. */
 	public String allText(java.util.function.Predicate<ILoggingEvent> accept) {
 		StringBuilder sb = new StringBuilder();
-		for (ILoggingEvent e : appender.list) {
+		for (ILoggingEvent e : events()) {
 			if (!accept.test(e)) {
 				continue;
 			}

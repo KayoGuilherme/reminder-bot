@@ -88,7 +88,7 @@ Everything is configured with environment variables (a `.env` file next to `dock
 | Variable | Default | Description |
 | --- | --- | --- |
 | `APP_TIMEZONE` | `America/Fortaleza` | Timezone for every time shown to you and for the 03:00 cleanup. Internally everything is UTC. |
-| `APP_LANGUAGE` | `en` | Language of the bot's messages: `en` or `pt-BR` |
+| `APP_LANGUAGE` | `en` | Language of the bot's messages: `en` or `pt-BR`. With `pt-BR` the messages are in Portuguese and dates are day first (`22/11/2026 18:00`); with `en` they are `2026-11-22 18:00`. |
 | `APP_STT_LANGUAGE` | `pt` | Language spoken in voice notes (Whisper language code) |
 | `LLM_BASE_URL` / `LLM_MODEL` / `LLM_API_KEY` | Groq, `openai/gpt-oss-20b`, `GROQ_API_KEY` | Any OpenAI-compatible chat-completions provider that parses tasks. For Gemini: `LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai`, a Gemini `LLM_MODEL` and `LLM_API_KEY`. |
 | `APP_VOICE_MAX_SECONDS` | `60` | Longest accepted voice note |
