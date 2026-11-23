@@ -26,6 +26,7 @@ Send a **voice note** (up to `APP_VOICE_MAX_SECONDS`, 60 by default) or a plain 
 | "preciso enviar o relatório até as 18h, é urgente" | "send the report by 6pm, it's urgent" | Send the report · **High** · due 2026-11-22 18:00 |
 | "pagar o aluguel amanhã às 9h" | "pay rent tomorrow at 9" | Pay rent · **Medium (assumed, you didn't say)** · due 2026-11-23 09:00 |
 | "ligar para o dentista daqui a 2 horas, sem pressa" | "call the dentist in 2 hours, no rush" | Call the dentist · **Low** · due 2026-11-22 12:00 |
+| "tenho uma reunião amanhã às 2 da tarde, urgente" | "I have a meeting tomorrow at 2pm, urgent" | Meeting · **High** · due 2026-11-23 **14:00** (hours 1-6 with no period of the day are read as afternoon) |
 | "estudar inglês hoje às 20h, começar às 19h" | "study English today at 8pm, start at 7pm" | Study English · Medium (assumed) · start 19:00 · due 20:00 |
 | "comprar leite" | "buy milk" | **No time given:** the bot asks you to resend including when it is due; nothing is saved |
 
