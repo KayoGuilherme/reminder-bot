@@ -19,5 +19,11 @@ jobs:
           java-version: "21"
           cache: maven
       # Tests use Testcontainers (PostgreSQL); Docker is available on GitHub-hosted runners.
-      - name: Build and test
+      - name: Compile, run every test and the conventions check
         run: ./mvnw -B verify
+      - name: Keep the test reports
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: surefire-reports
+          path: target/surefire-reports
