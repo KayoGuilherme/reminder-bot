@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 
 import com.kayo.reminder.application.port.in.CreateTaskFromVoiceUseCase;
 import com.kayo.reminder.application.port.in.HandleIncomingCommandUseCase;
+import com.kayo.reminder.application.port.in.HandleReminderActionUseCase;
 import com.kayo.reminder.application.port.out.AudioDownloadPort;
 import com.kayo.reminder.application.port.out.TaskParserPort;
 import com.kayo.reminder.application.port.out.TaskRepository;
@@ -13,6 +14,7 @@ import com.kayo.reminder.application.port.out.TranscriptionPort;
 import java.time.Clock;
 import com.kayo.reminder.application.port.out.MessageSenderPort;
 import com.kayo.reminder.config.AppProperties;
+import com.kayo.reminder.config.ReminderConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.context.MessageSourceAutoConfiguration;
@@ -51,6 +53,7 @@ class TelegramWiringTest {
 			assertThat(context).hasSingleBean(HandleIncomingCommandUseCase.class);
 			assertThat(context).hasSingleBean(AudioDownloadPort.class);
 			assertThat(context).hasSingleBean(CreateTaskFromVoiceUseCase.class);
+			assertThat(context).hasSingleBean(HandleReminderActionUseCase.class);
 		});
 	}
 
@@ -66,12 +69,13 @@ class TelegramWiringTest {
 					assertThat(context).doesNotHaveBean(HandleIncomingCommandUseCase.class);
 					assertThat(context).doesNotHaveBean(AudioDownloadPort.class);
 					assertThat(context).doesNotHaveBean(CreateTaskFromVoiceUseCase.class);
+					assertThat(context).doesNotHaveBean(HandleReminderActionUseCase.class);
 					assertThat(context).doesNotHaveBean(TelegramUpdateConsumer.class);
 				});
 	}
 
 	@EnableConfigurationProperties(AppProperties.class)
-	@Import(TelegramConfiguration.class)
+	@Import({ TelegramConfiguration.class, ReminderConfig.class })
 	@ComponentScan("com.kayo.reminder.application.service")
 	static class Config {
 

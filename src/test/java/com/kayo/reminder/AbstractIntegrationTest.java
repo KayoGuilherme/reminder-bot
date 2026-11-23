@@ -17,6 +17,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 				"TELEGRAM_BOT_TOKEN=test-bot-token-9f8e7d",
 				"TELEGRAM_ALLOWED_USER_ID=42",
 				"app.telegram.enabled=false",
+				"app.scheduler.enabled=false",
 				"GROQ_API_KEY=test-groq-key-1a2b3c",
 				"GEMINI_API_KEY=test-gemini-key-4d5e6f"
 		})

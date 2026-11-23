@@ -26,6 +26,8 @@ public final class TestProperties {
 						Duration.ofSeconds(5), Duration.ofSeconds(30)),
 				new AppProperties.Llm("https://api.groq.com/openai/v1", "test-model", "llm-key",
 						Duration.ofSeconds(5), Duration.ofSeconds(30)),
-				new AppProperties.Voice(maxVoiceSeconds), new AppProperties.Draft(draftTtl));
+				new AppProperties.Voice(maxVoiceSeconds), new AppProperties.Draft(draftTtl),
+				new AppProperties.Scheduler(true, Duration.ofSeconds(30)),
+				new AppProperties.Reminder(Duration.ofMinutes(2), 10));
 	}
 }

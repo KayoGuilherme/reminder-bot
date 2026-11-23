@@ -23,7 +23,9 @@ public record AppProperties(
 		@DefaultValue @Valid Stt stt,
 		@NotNull @Valid Llm llm,
 		@DefaultValue @Valid Voice voice,
-		@DefaultValue @Valid Draft draft) {
+		@DefaultValue @Valid Draft draft,
+		@DefaultValue @Valid Scheduler scheduler,
+		@DefaultValue @Valid Reminder reminder) {
 
 	public record Telegram(
 			@NotBlank String botToken,
@@ -88,5 +90,17 @@ public record AppProperties(
 	}
 
 	public record Draft(@DefaultValue("10m") @NotNull @DurationMin(nanos = 1) Duration ttl) {
+	}
+
+	/** The reminder job: how long to wait after each run before the next, and whether it runs at all. */
+	public record Scheduler(
+			@DefaultValue("true") boolean enabled,
+			@DefaultValue("30s") @NotNull @DurationMin(nanos = 1) Duration interval) {
+	}
+
+	/** HIGH nagging after the deadline: the wait between overdue reminders and how many are sent before stopping. */
+	public record Reminder(
+			@DefaultValue("2m") @NotNull @DurationMin(nanos = 1) Duration repeatInterval,
+			@DefaultValue("10") @Min(1) int maxRepeats) {
 	}
 }

@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 import com.kayo.reminder.application.port.in.CreateTaskFromVoiceUseCase;
+import com.kayo.reminder.application.port.in.HandleReminderActionUseCase;
 import com.kayo.reminder.application.port.in.IncomingCommand;
 import com.kayo.reminder.application.port.out.SendResult;
 import com.kayo.reminder.application.port.out.SendResult.FailureReason;
@@ -21,9 +22,10 @@ class IncomingCommandServiceTest {
 
 	private final RecordingSender sender = new RecordingSender();
 	private final CreateTaskFromVoiceUseCase createTask = mock(CreateTaskFromVoiceUseCase.class);
+	private final HandleReminderActionUseCase reminderActions = mock(HandleReminderActionUseCase.class);
 
 	private IncomingCommandService service(String languageTag) {
-		return new IncomingCommandService(sender, TestMessages.of(languageTag), createTask);
+		return new IncomingCommandService(sender, TestMessages.of(languageTag), createTask, reminderActions);
 	}
 
 	private static String english(String key) {
@@ -128,6 +130,37 @@ class IncomingCommandServiceTest {
 		assertThat(sender.texts).isEmpty();
 		verify(createTask, never()).confirm(org.mockito.ArgumentMatchers.anyLong(), any(), any());
 		verify(createTask, never()).cancel(org.mockito.ArgumentMatchers.anyLong(), any(), any());
+	}
+
+	@Test
+	void doneButtonIsAcknowledgedAndHandedToTheReminderActions() {
+		UUID id = UUID.randomUUID();
+		service("en").handle(IncomingCommand.callback(10, 42, 77, "cb-1", "task:done:" + id));
+		assertThat(sender.answeredCallbacks).containsExactly("cb-1");
+		verify(reminderActions).done(10, 77, id);
+		verifyNoMoreInteractions(reminderActions);
+		verifyNoInteractions(createTask);
+		assertThat(sender.texts).isEmpty();
+	}
+
+	@Test
+	void snoozeButtonIsAcknowledgedAndHandedToTheReminderActions() {
+		UUID id = UUID.randomUUID();
+		service("en").handle(IncomingCommand.callback(10, 42, 78, "cb-2", "task:snooze:" + id));
+		assertThat(sender.answeredCallbacks).containsExactly("cb-2");
+		verify(reminderActions).snooze(10, 78, id);
+		verifyNoMoreInteractions(reminderActions);
+	}
+
+	@Test
+	void malformedReminderButtonDataIsOnlyAcknowledged() {
+		IncomingCommandService service = service("en");
+		service.handle(IncomingCommand.callback(10, 42, 1, "cb-1", "task:done:not-a-uuid"));
+		service.handle(IncomingCommand.callback(10, 42, 1, "cb-2", "task:snooze:"));
+		service.handle(IncomingCommand.callback(10, 42, 1, "cb-3", "task:done"));
+		assertThat(sender.answeredCallbacks).containsExactly("cb-1", "cb-2", "cb-3");
+		assertThat(sender.texts).isEmpty();
+		verifyNoInteractions(reminderActions);
 	}
 
 	@Test

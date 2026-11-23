@@ -51,6 +51,12 @@ app:
     max-seconds: ${APP_VOICE_MAX_SECONDS:60}
   draft:
     ttl: ${APP_DRAFT_TTL:10m}
+  scheduler:
+    enabled: ${APP_SCHEDULER_ENABLED:true}
+    interval: ${APP_SCHEDULER_INTERVAL:30s}
+  reminder:
+    repeat-interval: ${APP_REMINDER_REPEAT_INTERVAL:2m}
+    max-repeats: ${APP_REMINDER_MAX_REPEATS:10}
 
 management:
   endpoints:

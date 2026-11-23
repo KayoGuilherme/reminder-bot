@@ -32,7 +32,7 @@ class TaskSummaryFormatter {
 		return text.toString();
 	}
 
-	private String format(Instant instant) {
+	String format(Instant instant) {
 		return TIME.format(instant.atZone(zone));
 	}
 }

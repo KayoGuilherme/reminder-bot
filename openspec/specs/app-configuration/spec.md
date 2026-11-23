@@ -82,3 +82,37 @@ The application MUST NOT write the values of secret settings (bot token, API key
 #### Scenario: Startup logs
 - **WHEN** the application starts with real-looking secret values
 - **THEN** none of those values appear in the log output
+
+### Requirement: Scheduler settings
+The application SHALL accept `app.scheduler.enabled` (boolean, default true) and `app.scheduler.interval` (duration, default 30 seconds). The interval MUST be greater than zero; an invalid value MUST stop startup with an error naming the setting.
+
+#### Scenario: Defaults
+- **WHEN** the application starts without any `app.scheduler.*` setting
+- **THEN** the scheduler is enabled with a 30-second interval
+
+#### Scenario: Overridden interval
+- **WHEN** `app.scheduler.interval` is set to `1m`
+- **THEN** the job waits one minute between runs
+
+#### Scenario: Invalid interval
+- **WHEN** `app.scheduler.interval` is set to `0s` or a negative value
+- **THEN** startup fails and the error output names `app.scheduler.interval`
+
+### Requirement: Overdue reminder settings
+The application SHALL expose `app.reminder.repeat-interval`, the wait between HIGH overdue reminders (default 2 minutes, populated from `APP_REMINDER_REPEAT_INTERVAL`), and `app.reminder.max-repeats`, the number of overdue reminders sent before the final stop message (default 10, populated from `APP_REMINDER_MAX_REPEATS`). The interval MUST be greater than zero and the cap at least 1; an invalid value MUST cause startup to fail with an error naming the setting. The settings are optional and are documented in `.env.example` and the README.
+
+#### Scenario: Defaults
+- **WHEN** the application starts without any reminder settings
+- **THEN** the repeat interval is 2 minutes and the cap is 10
+
+#### Scenario: Custom values
+- **WHEN** the application starts with `APP_REMINDER_REPEAT_INTERVAL=1m` and `APP_REMINDER_MAX_REPEATS=3`
+- **THEN** HIGH overdue reminders are spaced 1 minute apart and the final message follows the third
+
+#### Scenario: Invalid interval
+- **WHEN** the application starts with `APP_REMINDER_REPEAT_INTERVAL=0s`
+- **THEN** startup fails with an error identifying the repeat interval setting
+
+#### Scenario: Invalid cap
+- **WHEN** the application starts with `APP_REMINDER_MAX_REPEATS=0`
+- **THEN** startup fails with an error identifying the max repeats setting

@@ -120,6 +120,62 @@ class AppPropertiesTest {
 	}
 
 	@Test
+	void schedulerDefaultsToEnabledEvery30Seconds() {
+		runner().run(context -> {
+			AppProperties.Scheduler scheduler = context.getBean(AppProperties.class).scheduler();
+			assertThat(scheduler.enabled()).isTrue();
+			assertThat(scheduler.interval()).isEqualTo(Duration.ofSeconds(30));
+		});
+	}
+
+	@Test
+	void schedulerCanBeOverridden() {
+		runner("app.scheduler.interval=1m", "app.scheduler.enabled=false").run(context -> {
+			AppProperties.Scheduler scheduler = context.getBean(AppProperties.class).scheduler();
+			assertThat(scheduler.enabled()).isFalse();
+			assertThat(scheduler.interval()).isEqualTo(Duration.ofMinutes(1));
+		});
+	}
+
+	@Test
+	void failsWhenSchedulerIntervalIsNotPositive() {
+		runner("app.scheduler.interval=0s").run(context -> assertThat(context).hasFailed().getFailure()
+				.hasStackTraceContaining("scheduler.interval"));
+		runner("app.scheduler.interval=-5s").run(context -> assertThat(context).hasFailed().getFailure()
+				.hasStackTraceContaining("scheduler.interval"));
+	}
+
+	@Test
+	void reminderDefaultsToEveryTwoMinutesUpToTenRepeats() {
+		runner().run(context -> {
+			AppProperties.Reminder reminder = context.getBean(AppProperties.class).reminder();
+			assertThat(reminder.repeatInterval()).isEqualTo(Duration.ofMinutes(2));
+			assertThat(reminder.maxRepeats()).isEqualTo(10);
+		});
+	}
+
+	@Test
+	void reminderCanBeOverridden() {
+		runner("APP_REMINDER_REPEAT_INTERVAL=1m", "APP_REMINDER_MAX_REPEATS=3").run(context -> {
+			AppProperties.Reminder reminder = context.getBean(AppProperties.class).reminder();
+			assertThat(reminder.repeatInterval()).isEqualTo(Duration.ofMinutes(1));
+			assertThat(reminder.maxRepeats()).isEqualTo(3);
+		});
+	}
+
+	@Test
+	void failsWhenReminderRepeatIntervalIsNotPositive() {
+		runner("APP_REMINDER_REPEAT_INTERVAL=0s").run(context -> assertThat(context).hasFailed().getFailure()
+				.hasStackTraceContaining("reminder.repeatInterval"));
+	}
+
+	@Test
+	void failsWhenReminderMaxRepeatsIsBelowOne() {
+		runner("APP_REMINDER_MAX_REPEATS=0").run(context -> assertThat(context).hasFailed().getFailure()
+				.hasStackTraceContaining("reminder.maxRepeats"));
+	}
+
+	@Test
 	void secretsAreMaskedInToString() {
 		runner("LLM_API_KEY=llm-secret").run(context -> {
 			String text = context.getBean(AppProperties.class).toString();
