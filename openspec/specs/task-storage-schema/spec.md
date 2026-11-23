@@ -46,9 +46,17 @@ The schema SHALL include an index on `(status, deadline_at)` to serve the query 
 - **WHEN** the `tasks` table indexes are inspected after migration
 - **THEN** an index covering `status` then `deadline_at` exists
 
-### Requirement: No persistence model yet
-This foundation MUST NOT introduce entity or repository types for `tasks`; the schema exists ahead of the code that uses it.
+### Requirement: Task language column
+Migration V2 SHALL add a column `language` (VARCHAR(5), required, default `en`) to `tasks`. The database SHALL reject `language` values other than `en` and `pt-BR`. Existing rows MUST receive `en`.
 
-#### Scenario: Startup validation passes without entities
-- **WHEN** the application starts with schema validation enabled and no entities defined
-- **THEN** startup succeeds
+#### Scenario: Existing tasks after migration
+- **WHEN** migration V2 is applied to a database that already holds tasks
+- **THEN** every existing task has `language` set to `en`
+
+#### Scenario: New task without an explicit language
+- **WHEN** a row is inserted with only `id`, `chat_id`, `title`, `urgency` and `deadline_at`
+- **THEN** `language` is `en`
+
+#### Scenario: Invalid language
+- **WHEN** a row is inserted with `language = 'es'`
+- **THEN** the database rejects the insert
