@@ -16,6 +16,6 @@ public final class TestTasks {
 
 	public static TaskResponse create(UUID id, long chatId, String title, Urgency urgency, Instant startAt,
 			Instant deadlineAt, Instant now) {
-		return new TaskFactory(Clock.fixed(now, ZoneOffset.UTC)).create(new CreateTaskRequest(id, chatId, title, urgency, startAt, deadlineAt));
+		return new TaskFactory(Clock.fixed(now, ZoneOffset.UTC)).create(new CreateTaskRequest(id, chatId, title, urgency, startAt, deadlineAt, "en"));
 	}
 }

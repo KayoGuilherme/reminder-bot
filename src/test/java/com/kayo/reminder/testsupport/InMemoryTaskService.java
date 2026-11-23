@@ -50,7 +50,7 @@ public class InMemoryTaskService extends TaskService {
 				task -> task.status() == TaskStatus.PENDING && task.lastReminderStage() < stage
 						&& task.deadlineAt().equals(expectedDeadline),
 				task -> new TaskResponse(task.id(), task.chatId(), task.title(), task.urgency(), task.status(),
-						task.startAt(), task.deadlineAt(), (short) stage, at, task.createdAt(), at));
+						task.startAt(), task.deadlineAt(), (short) stage, at, task.createdAt(), at, task.language()));
 		Optional.of(applied).filter(Boolean::booleanValue).ifPresent(done -> recorded.add(id));
 		return applied;
 	}
@@ -71,7 +71,7 @@ public class InMemoryTaskService extends TaskService {
 				task -> task.status() == TaskStatus.PENDING && task.deadlineAt().equals(expectedDeadline)
 						&& task.lastReminderStage() > 0,
 				task -> new TaskResponse(task.id(), task.chatId(), task.title(), task.urgency(), task.status(),
-						task.startAt(), newDeadline, (short) 0, task.lastRemindedAt(), task.createdAt(), at));
+						task.startAt(), newDeadline, (short) 0, task.lastRemindedAt(), task.createdAt(), at, task.language()));
 	}
 
 	@Override
@@ -97,7 +97,7 @@ public class InMemoryTaskService extends TaskService {
 	private boolean finish(UUID id, TaskStatus status, Instant at) {
 		return update(id, task -> task.status() == TaskStatus.PENDING,
 				task -> new TaskResponse(task.id(), task.chatId(), task.title(), task.urgency(), status, task.startAt(),
-						task.deadlineAt(), task.lastReminderStage(), task.lastRemindedAt(), task.createdAt(), at));
+						task.deadlineAt(), task.lastReminderStage(), task.lastRemindedAt(), task.createdAt(), at, task.language()));
 	}
 
 	private boolean update(UUID id, Predicate<TaskResponse> applicable, UnaryOperator<TaskResponse> change) {
@@ -109,7 +109,7 @@ public class InMemoryTaskService extends TaskService {
 	public TaskResponse add(long chatId, String title, Urgency urgency, TaskStatus status,
 			Instant deadline) {
 		TaskResponse task = new TaskResponse(UUID.randomUUID(), chatId, title, urgency, status, null, deadline, (short) 0, null,
-				deadline.minusSeconds(3600), deadline.minusSeconds(3600));
+				deadline.minusSeconds(3600), deadline.minusSeconds(3600), "en");
 		tasks.put(task.id(), task);
 		return task;
 	}

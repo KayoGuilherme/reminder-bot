@@ -25,7 +25,7 @@ class TaskFactoryTest {
 	private static final Instant LATER = NOW.plusSeconds(3600);
 
 	private static TaskResponse create(String title, Urgency urgency, Instant start, Instant deadline) {
-		return new TaskFactory(Clock.fixed(NOW, ZoneOffset.UTC)).create(new CreateTaskRequest(UUID.randomUUID(), 7L, title, urgency, start, deadline));
+		return new TaskFactory(Clock.fixed(NOW, ZoneOffset.UTC)).create(new CreateTaskRequest(UUID.randomUUID(), 7L, title, urgency, start, deadline, "en"));
 	}
 
 	static Stream<Arguments> invalid() {
@@ -48,6 +48,22 @@ class TaskFactoryTest {
 	void rejectsInvalidTasks(String name, String title, Urgency urgency, Instant start, Instant deadline, TaskRule rule) {
 		assertThatThrownBy(() -> create(title, urgency, start, deadline))
 				.isInstanceOfSatisfying(TaskValidationException.class, ex -> assertThat(ex.rule()).isEqualTo(rule));
+	}
+
+	@Test
+	void rejectsALanguageThatIsNotSupported() {
+		assertThatThrownBy(() -> new TaskFactory(Clock.fixed(NOW, ZoneOffset.UTC))
+				.create(new CreateTaskRequest(UUID.randomUUID(), 7L, "a", Urgency.LOW, null, LATER, "es")))
+				.isInstanceOfSatisfying(TaskValidationException.class,
+						ex -> assertThat(ex.rule()).isEqualTo(TaskRule.LANGUAGE_UNSUPPORTED));
+	}
+
+	@Test
+	void keepsThePortugueseLanguageOfTheDraft() {
+		TaskResponse task = new TaskFactory(Clock.fixed(NOW, ZoneOffset.UTC))
+				.create(new CreateTaskRequest(UUID.randomUUID(), 7L, "a", Urgency.LOW, null, LATER, "pt-BR"));
+
+		assertThat(task.language()).isEqualTo("pt-BR");
 	}
 
 	@Test
@@ -83,7 +99,7 @@ class TaskFactoryTest {
 	void aStoredTaskMayHaveADeadlineInThePast() {
 		Instant past = NOW.minusSeconds(86400);
 		TaskResponse task = new TaskResponse(UUID.randomUUID(), 7L, "old", Urgency.LOW, TaskStatus.DONE, null, past, (short) 2,
-				past, past, past);
+				past, past, past, "en");
 		assertThat(task.deadlineAt()).isEqualTo(past);
 		assertThat(task.status()).isEqualTo(TaskStatus.DONE);
 	}

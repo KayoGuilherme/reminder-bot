@@ -23,7 +23,7 @@ class DraftStoreTest {
 	private final DraftStore store = new DraftStore(clock, TTL);
 
 	private DraftResponse draft(long chatId) {
-		return store.create(chatId, "Pay rent", Urgency.HIGH, false, null, START.plusSeconds(3600));
+		return store.create(chatId, "Pay rent", Urgency.HIGH, false, null, START.plusSeconds(3600), "en");
 	}
 
 	@Test

@@ -19,7 +19,7 @@ class TaskMapperTest {
 	void everyFieldSurvivesTheRoundTrip() {
 		TaskResponse task = new TaskResponse(UUID.randomUUID(), 42L, "send report", Urgency.HIGH, TaskStatus.PENDING,
 				CREATED.plusSeconds(60), CREATED.plusSeconds(3600), (short) 3, CREATED.plusSeconds(120), CREATED,
-				CREATED.plusSeconds(30));
+				CREATED.plusSeconds(30), "en");
 
 		assertThat(mapper.toModel(mapper.toEntity(task))).isEqualTo(task);
 	}
@@ -27,7 +27,7 @@ class TaskMapperTest {
 	@Test
 	void absentOptionalFieldsStayAbsent() {
 		TaskResponse task = new TaskResponse(UUID.randomUUID(), 7L, "pay rent", Urgency.LOW, TaskStatus.DONE, null,
-				CREATED.plusSeconds(60), (short) 0, null, CREATED, CREATED);
+				CREATED.plusSeconds(60), (short) 0, null, CREATED, CREATED, "en");
 
 		assertThat(mapper.toModel(mapper.toEntity(task))).isEqualTo(task);
 	}
@@ -35,7 +35,7 @@ class TaskMapperTest {
 	@Test
 	void theEntityCarriesTheModelValues() {
 		TaskResponse task = new TaskResponse(UUID.randomUUID(), 42L, "send report", Urgency.MEDIUM, TaskStatus.CANCELED, null,
-				CREATED.plusSeconds(3600), (short) 1, null, CREATED, CREATED);
+				CREATED.plusSeconds(3600), (short) 1, null, CREATED, CREATED, "en");
 
 		TaskEntity entity = mapper.toEntity(task);
 

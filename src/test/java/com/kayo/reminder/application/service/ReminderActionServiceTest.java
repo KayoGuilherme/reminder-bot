@@ -42,9 +42,13 @@ class ReminderActionServiceTest {
 	}
 
 	private TaskResponse task(TaskStatus status, Instant deadline, int stage) {
+		return task(status, deadline, stage, "en");
+	}
+
+	private TaskResponse task(TaskStatus status, Instant deadline, int stage, String language) {
 		TaskResponse added = repository.add(CHAT, "Send the report", Urgency.HIGH, status, deadline);
 		TaskResponse stored = new TaskResponse(added.id(), CHAT, added.title(), Urgency.HIGH, status, null, deadline,
-				(short) stage, NOW, added.createdAt(), added.updatedAt());
+				(short) stage, NOW, added.createdAt(), added.updatedAt(), language);
 		repository.tasks.put(stored.id(), stored);
 		return stored;
 	}
@@ -236,6 +240,19 @@ class ReminderActionServiceTest {
 	}
 
 	@Test
+	void aPortugueseTaskIsSnoozedWithAPortugueseConfirmationAndBrazilianDate() {
+		TaskResponse added = repository.add(CHAT, "Relatório", Urgency.HIGH, TaskStatus.PENDING, NOW);
+		TaskResponse stored = new TaskResponse(added.id(), CHAT, added.title(), Urgency.HIGH, TaskStatus.PENDING, null,
+				NOW, (short) 1, NOW, added.createdAt(), added.updatedAt(), "pt-BR");
+		repository.tasks.put(stored.id(), stored);
+
+		service("en").snooze(CHAT, MESSAGE, stored.id());
+
+		assertThat(sender.edits.get(0).text()).startsWith("Adiada por 10 minutos").contains("Relatório")
+				.contains("Novo prazo: 22/11/2026 15:10");
+	}
+
+	@Test
 	void snoozeAfterTheDeadlineCountsFromNow() {
 		TaskResponse task = task(TaskStatus.PENDING, NOW.minus(Duration.ofMinutes(20)), 6);
 
@@ -290,7 +307,7 @@ class ReminderActionServiceTest {
 
 	@Test
 	void textsAreInThePortugueseWhenConfigured() {
-		TaskResponse task = task(TaskStatus.PENDING, NOW, 1);
+		TaskResponse task = task(TaskStatus.PENDING, NOW, 1, "pt-BR");
 
 		service("pt-BR").snooze(CHAT, MESSAGE, task.id());
 		service("pt-BR").done(CHAT, MESSAGE, task.id());
@@ -301,7 +318,7 @@ class ReminderActionServiceTest {
 
 	@Test
 	void cancelTextsAreInThePortugueseWhenConfigured() {
-		TaskResponse task = task(TaskStatus.PENDING, NOW, 1);
+		TaskResponse task = task(TaskStatus.PENDING, NOW, 1, "pt-BR");
 
 		service("pt-BR").cancel(CHAT, MESSAGE, task.id());
 		service("pt-BR").cancel(CHAT, MESSAGE, task.id());

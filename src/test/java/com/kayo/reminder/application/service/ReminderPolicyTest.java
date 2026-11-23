@@ -28,7 +28,7 @@ class ReminderPolicyTest {
 
 	private static TaskResponse task(Urgency urgency, TaskStatus status, int lastStage) {
 		return new TaskResponse(UUID.randomUUID(), 1L, "Report", urgency, status, null, DEADLINE, (short) lastStage, null,
-				DEADLINE.minus(Duration.ofHours(1)), DEADLINE.minus(Duration.ofHours(1)));
+				DEADLINE.minus(Duration.ofHours(1)), DEADLINE.minus(Duration.ofHours(1)), "en");
 	}
 
 	private static Instant at(Duration beforeDeadline) {
@@ -154,7 +154,7 @@ class ReminderPolicyTest {
 
 	private static TaskResponse taskReminded(Urgency urgency, int lastStage, Instant remindedAt) {
 		return new TaskResponse(UUID.randomUUID(), 1L, "Report", urgency, TaskStatus.PENDING, null, DEADLINE,
-				(short) lastStage, remindedAt, DEADLINE.minus(Duration.ofHours(1)), remindedAt);
+				(short) lastStage, remindedAt, DEADLINE.minus(Duration.ofHours(1)), remindedAt, "en");
 	}
 
 	static Stream<Arguments> repeatTable() {
@@ -229,7 +229,7 @@ class ReminderPolicyTest {
 	@Test
 	void aDoneTaskStopsRepeating() {
 		TaskResponse done = new TaskResponse(UUID.randomUUID(), 1L, "Report", Urgency.HIGH, TaskStatus.DONE, null, DEADLINE,
-				(short) 5, DEADLINE, DEADLINE, DEADLINE);
+				(short) 5, DEADLINE, DEADLINE, DEADLINE, "en");
 
 		assertThat(policy.decide(done, DEADLINE.plus(Duration.ofHours(1)))).isEmpty();
 	}
@@ -253,7 +253,7 @@ class ReminderPolicyTest {
 	void aSnoozedTaskIsDueForStageOneImmediatelyAndRestartsTheCycle() {
 		Instant now = DEADLINE.plus(Duration.ofMinutes(20));
 		TaskResponse snoozed = new TaskResponse(UUID.randomUUID(), 1L, "Report", Urgency.HIGH, TaskStatus.PENDING, null,
-				now.plus(ReminderPolicy.SNOOZE), (short) 0, DEADLINE.plus(Duration.ofMinutes(18)), DEADLINE, now);
+				now.plus(ReminderPolicy.SNOOZE), (short) 0, DEADLINE.plus(Duration.ofMinutes(18)), DEADLINE, now, "en");
 
 		assertThat(policy.decide(snoozed, now)).contains(ReminderDecisionResponse.scheduled(1));
 		assertThat(policy.decide(taskSnoozedAfterStage(snoozed, 1), now.plus(Duration.ofMinutes(5))))
@@ -262,6 +262,6 @@ class ReminderPolicyTest {
 
 	private static TaskResponse taskSnoozedAfterStage(TaskResponse task, int stage) {
 		return new TaskResponse(task.id(), task.chatId(), task.title(), task.urgency(), task.status(), null,
-				task.deadlineAt(), (short) stage, task.updatedAt(), task.createdAt(), task.updatedAt());
+				task.deadlineAt(), (short) stage, task.updatedAt(), task.createdAt(), task.updatedAt(), task.language());
 	}
 }

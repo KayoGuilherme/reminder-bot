@@ -33,7 +33,7 @@ class RetentionServiceTest {
 	private TaskResponse task(TaskStatus status, Duration age) {
 		TaskResponse added = repository.add(1L, "t", Urgency.LOW, status, NOW.plus(Duration.ofDays(3)));
 		TaskResponse aged = new TaskResponse(added.id(), 1L, "t", Urgency.LOW, status, null, added.deadlineAt(), (short) 0, null,
-				NOW.minus(age).minusSeconds(3600), NOW.minus(age));
+				NOW.minus(age).minusSeconds(3600), NOW.minus(age), added.language());
 		repository.tasks.put(aged.id(), aged);
 		return aged;
 	}

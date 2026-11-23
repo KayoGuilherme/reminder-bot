@@ -151,7 +151,7 @@ class SendDueRemindersServiceTest {
 				List<TaskResponse> candidates = repository.findReminderCandidates(deadlineBefore, finalStageByUrgency);
 				repository.tasks.put(task.id(), new TaskResponse(task.id(), task.chatId(), task.title(), task.urgency(),
 						TaskStatus.DONE, null, task.deadlineAt(), (short) 0, null, task.createdAt(),
-						task.updatedAt()));
+						task.updatedAt(), task.language()));
 				return candidates;
 			}
 
@@ -185,7 +185,7 @@ class SendDueRemindersServiceTest {
 			public boolean markReminded(UUID id, int stage, Instant at, Instant expectedDeadline) {
 				repository.tasks.put(id, new TaskResponse(task.id(), task.chatId(), task.title(), task.urgency(),
 						TaskStatus.DONE, null, task.deadlineAt(), (short) 0, null, task.createdAt(),
-						task.updatedAt()));
+						task.updatedAt(), task.language()));
 				return repository.markReminded(id, stage, at, expectedDeadline);
 			}
 		};
@@ -201,7 +201,7 @@ class SendDueRemindersServiceTest {
 	private TaskResponse overdueHigh(int stage, Instant remindedAt) {
 		TaskResponse task = repository.add(7L, "Send the report", Urgency.HIGH, TaskStatus.PENDING, DEADLINE);
 		TaskResponse stored = new TaskResponse(task.id(), task.chatId(), task.title(), task.urgency(), task.status(), null,
-				DEADLINE, (short) stage, remindedAt, task.createdAt(), remindedAt);
+				DEADLINE, (short) stage, remindedAt, task.createdAt(), remindedAt, task.language());
 		repository.tasks.put(task.id(), stored);
 		return stored;
 	}

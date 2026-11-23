@@ -34,7 +34,7 @@ public class ListTasksService {
 		this.tasks = tasks;
 		this.sender = sender;
 		this.messages = messages;
-		this.formatter = new TaskSummaryFormatter(messages, properties.timezone());
+		this.formatter = new TaskSummaryFormatter(properties.timezone());
 		this.clock = clock;
 	}
 
@@ -46,16 +46,22 @@ public class ListTasksService {
 
 	private void show(long chatId, List<TaskResponse> pending) {
 		Instant now = clock.instant();
-		pending.forEach(task -> sender.sendWithButtons(chatId, formatter.listItem(task, now), List.of(List.of(
-				new ButtonResponse(messages.get("tasks.done-button"), ReminderActionService.DONE_PREFIX + task.id()),
-				new ButtonResponse(messages.get("tasks.cancel-button"), ReminderActionService.CANCEL_PREFIX + task.id())))));
-		announceRemaining(chatId, pending.size());
+		pending.forEach(task -> showTask(chatId, task, now));
+		announceRemaining(chatId, pending);
 		log.info("Listed {} pending tasks for chat {}", pending.size(), chatId);
 	}
 
-	private void announceRemaining(long chatId, int shown) {
-		Optional.of(shown).filter(count -> count == LIMIT).map(count -> tasks.countPendingByChat(chatId) - LIMIT)
+	private void showTask(long chatId, TaskResponse task, Instant now) {
+		Messages texts = messages.forLanguage(task.language());
+		sender.sendWithButtons(chatId, formatter.listItem(texts, task, now), List.of(List.of(
+				new ButtonResponse(texts.get("tasks.done-button"), ReminderActionService.DONE_PREFIX + task.id()),
+				new ButtonResponse(texts.get("tasks.cancel-button"), ReminderActionService.CANCEL_PREFIX + task.id()))));
+	}
+
+	private void announceRemaining(long chatId, List<TaskResponse> shown) {
+		Optional.of(shown.size()).filter(count -> count == LIMIT).map(count -> tasks.countPendingByChat(chatId) - LIMIT)
 				.filter(more -> more > 0)
-				.ifPresent(more -> sender.sendText(chatId, messages.get("tasks.more", more)));
+				.ifPresent(more -> sender.sendText(chatId,
+						messages.forLanguage(shown.get(0).language()).get("tasks.more", more)));
 	}
 }

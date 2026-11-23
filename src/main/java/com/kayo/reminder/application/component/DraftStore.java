@@ -32,11 +32,6 @@ public class DraftStore {
 	}
 
 	public DraftResponse create(long chatId, String title, Urgency urgency, boolean urgencyAssumed, Instant startAt,
-			Instant deadlineAt) {
-		return create(chatId, title, urgency, urgencyAssumed, startAt, deadlineAt, null);
-	}
-
-	public DraftResponse create(long chatId, String title, Urgency urgency, boolean urgencyAssumed, Instant startAt,
 			Instant deadlineAt, String language) {
 		Instant now = clock.instant();
 		drafts.values().removeIf(draft -> !now.isBefore(draft.expiresAt()));

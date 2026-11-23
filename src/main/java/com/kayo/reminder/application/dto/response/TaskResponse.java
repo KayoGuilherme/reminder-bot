@@ -16,5 +16,6 @@ public record TaskResponse(
 		short lastReminderStage,
 		Instant lastRemindedAt,
 		Instant createdAt,
-		Instant updatedAt) {
+		Instant updatedAt,
+		String language) {
 }

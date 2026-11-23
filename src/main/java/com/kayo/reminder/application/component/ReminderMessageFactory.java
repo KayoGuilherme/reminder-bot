@@ -38,24 +38,27 @@ public class ReminderMessageFactory {
 	}
 
 	public List<List<ButtonResponse>> buttons(TaskResponse task) {
+		Messages texts = messages.forLanguage(task.language());
 		return List.of(List.of(
-				new ButtonResponse(messages.get("reminder.done-button"), ReminderActionService.DONE_PREFIX + task.id()),
-				new ButtonResponse(messages.get("reminder.snooze-button"),
+				new ButtonResponse(texts.get("reminder.done-button"), ReminderActionService.DONE_PREFIX + task.id()),
+				new ButtonResponse(texts.get("reminder.snooze-button"),
 						ReminderActionService.SNOOZE_PREFIX + task.id())));
 	}
 
 	private String scheduled(TaskResponse task, ReminderDecisionResponse decision, Duration untilDeadline) {
 		long minutes = Math.max(0, Math.ceilDiv(untilDeadline.toMillis(), 60_000L));
-		return messages.get("reminder." + task.urgency() + "." + decision.stage(), task.title(), minutes);
+		return messages.forLanguage(task.language()).get("reminder." + task.urgency() + "." + decision.stage(),
+				task.title(), minutes);
 	}
 
 	private String overdue(TaskResponse task, ReminderDecisionResponse decision, Duration untilDeadline) {
-		return messages.get("reminder.HIGH.overdue." + band(decision.repeat()), task.title(),
-				minutesOverdue(untilDeadline));
+		return messages.forLanguage(task.language()).get("reminder.HIGH.overdue." + band(decision.repeat()),
+				task.title(), minutesOverdue(untilDeadline));
 	}
 
 	private String finalStop(TaskResponse task, ReminderDecisionResponse decision, Duration untilDeadline) {
-		return messages.get("reminder.HIGH.final", task.title(), minutesOverdue(untilDeadline));
+		return messages.forLanguage(task.language()).get("reminder.HIGH.final", task.title(),
+				minutesOverdue(untilDeadline));
 	}
 
 	private static int band(int repeat) {

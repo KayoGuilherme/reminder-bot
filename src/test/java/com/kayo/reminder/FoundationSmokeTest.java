@@ -28,7 +28,7 @@ class FoundationSmokeTest extends AbstractIntegrationTest {
 		List<String> columns = jdbc.queryForList(
 				"select column_name from information_schema.columns where table_name = 'tasks'", String.class);
 		assertThat(columns).containsExactlyInAnyOrder("id", "chat_id", "title", "urgency", "status", "start_at",
-				"deadline_at", "last_reminder_stage", "last_reminded_at", "created_at", "updated_at");
+				"deadline_at", "last_reminder_stage", "last_reminded_at", "created_at", "updated_at", "language");
 		String indexDef = jdbc.queryForObject(
 				"select indexdef from pg_indexes where tablename = 'tasks' and indexname = 'idx_tasks_status_deadline'",
 				String.class);

@@ -2,6 +2,7 @@ package com.kayo.reminder.application.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.kayo.reminder.application.dto.response.ButtonResponse;
 import com.kayo.reminder.application.dto.response.TaskResponse;
 import com.kayo.reminder.domain.models.enums.TaskStatus;
 import com.kayo.reminder.domain.models.enums.Urgency;
@@ -66,6 +67,20 @@ class ListTasksServiceTest {
 
 		assertThat(sender.withButtons.get(0).text()).contains("late").contains("Overdue");
 		assertThat(sender.withButtons.get(1).text()).contains("tomorrow").doesNotContain("Overdue");
+	}
+
+	@Test
+	void aPortugueseTaskIsListedWithPortugueseLabelsAndBrazilianDate() {
+		TaskResponse added = add(CHAT, "Relatório", Urgency.HIGH, TaskStatus.PENDING, Duration.ofHours(1));
+		repository.tasks.put(added.id(), new TaskResponse(added.id(), CHAT, added.title(), Urgency.HIGH,
+				TaskStatus.PENDING, null, added.deadlineAt(), (short) 0, null, added.createdAt(), added.updatedAt(), "pt-BR"));
+
+		service("en", ZoneId.of("America/Fortaleza")).list(CHAT);
+
+		assertThat(sender.withButtons.get(0).text()).contains("Alta").contains("Relatório")
+				.contains("Prazo: 22/11/2026 13:00");
+		assertThat(sender.withButtons.get(0).buttons().get(0)).extracting(ButtonResponse::text)
+				.containsExactly("Feito ✅", "Cancelar ❌");
 	}
 
 	@Test
@@ -176,7 +191,9 @@ class ListTasksServiceTest {
 	@Test
 	void textsAreInThePortugueseWhenConfigured() {
 		service("pt-BR", ZoneId.of("UTC")).list(CHAT);
-		add(CHAT, "relatorio", Urgency.HIGH, TaskStatus.PENDING, Duration.ofHours(1));
+		TaskResponse added = add(CHAT, "relatorio", Urgency.HIGH, TaskStatus.PENDING, Duration.ofHours(1));
+		repository.tasks.put(added.id(), new TaskResponse(added.id(), CHAT, added.title(), Urgency.HIGH,
+				TaskStatus.PENDING, null, added.deadlineAt(), (short) 0, null, added.createdAt(), added.updatedAt(), "pt-BR"));
 		service("pt-BR", ZoneId.of("UTC")).list(CHAT);
 
 		assertThat(sender.texts.get(0).text()).isEqualTo(TestMessages.text("pt-BR", "tasks.empty"));
