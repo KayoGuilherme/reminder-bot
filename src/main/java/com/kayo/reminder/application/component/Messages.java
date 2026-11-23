@@ -35,4 +35,8 @@ public class Messages {
 	public String get(String key, Object... args) {
 		return messageSource.getMessage(key, args, locale);
 	}
+
+	public String languageTag() {
+		return locale.toLanguageTag();
+	}
 }

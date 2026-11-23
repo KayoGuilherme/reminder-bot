@@ -47,7 +47,7 @@ public class CreateTaskFromVoiceService {
 	private final TaskService tasks;
 	private final DraftStore drafts;
 	private final Messages messages;
-	private final java.time.ZoneId zone;
+	private final TaskSummaryFormatter formatter;
 	private final int maxVoiceSeconds;
 	private final Clock clock;
 	private final TaskFactory taskFactory;
@@ -62,7 +62,7 @@ public class CreateTaskFromVoiceService {
 		this.tasks = tasks;
 		this.drafts = drafts;
 		this.messages = messages;
-		this.zone = properties.timezone();
+		this.formatter = new TaskSummaryFormatter(properties.timezone());
 		this.maxVoiceSeconds = properties.voice().maxSeconds();
 		this.clock = clock;
 		this.taskFactory = taskFactory;
@@ -144,7 +144,7 @@ public class CreateTaskFromVoiceService {
 	private void sendDraft(long chatId, ParsedTaskResponse parsed, Messages texts) {
 		boolean assumed = parsed.urgency() == null;
 		DraftResponse draft = drafts.create(chatId, parsed.title(), Optional.ofNullable(parsed.urgency()).orElse(Urgency.MEDIUM),
-				assumed, parsed.startAt(), parsed.deadlineAt(), parsed.language());
+				assumed, parsed.startAt(), parsed.deadlineAt(), texts.languageTag());
 		log.info("Draft {} created for chat {}", draft.id(), chatId);
 		sender.sendWithButtons(chatId, texts.get("task.confirm-header") + "\n\n" + summary(texts, draft),
 				List.of(List.of(
@@ -160,7 +160,7 @@ public class CreateTaskFromVoiceService {
 	private Optional<TaskResponse> createTask(long chatId, Integer messageId, DraftResponse draft, Messages texts) {
 		try {
 			return Optional.of(taskFactory.create(new CreateTaskRequest(draft.id(), chatId, draft.title(), draft.urgency(),
-					draft.startAt(), draft.deadlineAt())));
+					draft.startAt(), draft.deadlineAt(), draft.language())));
 		}
 		catch (TaskValidationException invalid) {
 			log.info("Draft {} could not become a task: {}", draft.id(), invalid.rule());
@@ -207,7 +207,7 @@ public class CreateTaskFromVoiceService {
 	}
 
 	private String summary(Messages texts, DraftResponse draft) {
-		return new TaskSummaryFormatter(texts, zone).summary(draft);
+		return formatter.summary(texts, draft);
 	}
 
 	private <T> Optional<T> refuse(long chatId, String key, Object... args) {

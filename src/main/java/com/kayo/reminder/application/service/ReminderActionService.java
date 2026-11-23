@@ -45,7 +45,7 @@ public class ReminderActionService {
 		this.tasks = tasks;
 		this.sender = sender;
 		this.messages = messages;
-		this.formatter = new TaskSummaryFormatter(messages, properties.timezone());
+		this.formatter = new TaskSummaryFormatter(properties.timezone());
 		this.clock = clock;
 	}
 
@@ -53,28 +53,29 @@ public class ReminderActionService {
 		owned(chatId, taskId).ifPresentOrElse(
 				task -> finish(chatId, messageId, task, ReminderActionService::doneStaleKey,
 						() -> tasks.markDone(taskId, clock.instant()), "marked done", "reminder.done.confirmed"),
-				() -> reply(chatId, NOT_AVAILABLE));
+				() -> reply(chatId, messages, NOT_AVAILABLE));
 	}
 
 	public void cancel(long chatId, Integer messageId, UUID taskId) {
 		owned(chatId, taskId).ifPresentOrElse(
 				task -> finish(chatId, messageId, task, ReminderActionService::cancelStaleKey,
 						() -> tasks.markCanceled(taskId, clock.instant()), "canceled", "tasks.canceled.confirmed"),
-				() -> reply(chatId, NOT_AVAILABLE));
+				() -> reply(chatId, messages, NOT_AVAILABLE));
 	}
 
 	public void snooze(long chatId, Integer messageId, UUID taskId) {
 		owned(chatId, taskId).ifPresentOrElse(task -> snoozeOwned(chatId, messageId, task),
-				() -> reply(chatId, NOT_AVAILABLE));
+				() -> reply(chatId, messages, NOT_AVAILABLE));
 	}
 
 	private void snoozeOwned(long chatId, Integer messageId, TaskResponse task) {
 		Instant now = clock.instant();
 		Instant newDeadline = Stream.of(task.deadlineAt(), now).max(Comparator.naturalOrder()).orElseThrow()
 				.plus(ReminderPolicy.SNOOZE);
-		snoozeFailure(task, newDeadline, now).ifPresentOrElse(key -> reply(chatId, key), () -> {
+		Messages texts = messages.forLanguage(task.language());
+		snoozeFailure(task, newDeadline, now).ifPresentOrElse(key -> reply(chatId, texts, key), () -> {
 			log.info("Task {} snoozed", task.id());
-			show(chatId, messageId, messages.get("reminder.snoozed", task.title(), formatter.format(newDeadline)));
+			show(chatId, messageId, texts.get("reminder.snoozed", task.title(), formatter.format(texts, newDeadline)));
 		});
 	}
 
@@ -95,9 +96,10 @@ public class ReminderActionService {
 
 	private void finish(long chatId, Integer messageId, TaskResponse task, Function<TaskStatus, String> staleKey,
 			BooleanSupplier apply, String logText, String confirmedKey) {
-		failure(task, staleKey, apply).ifPresentOrElse(key -> reply(chatId, key), () -> {
+		Messages texts = messages.forLanguage(task.language());
+		failure(task, staleKey, apply).ifPresentOrElse(key -> reply(chatId, texts, key), () -> {
 			log.info("Task {} {}", task.id(), logText);
-			show(chatId, messageId, messages.get(confirmedKey, task.title()));
+			show(chatId, messageId, texts.get(confirmedKey, task.title()));
 		});
 	}
 
@@ -121,8 +123,8 @@ public class ReminderActionService {
 		return status == TaskStatus.CANCELED ? "tasks.action.already-canceled" : NOT_ACTIVE;
 	}
 
-	private void reply(long chatId, String key) {
-		sender.sendText(chatId, messages.get(key));
+	private void reply(long chatId, Messages texts, String key) {
+		sender.sendText(chatId, texts.get(key));
 	}
 
 	private void show(long chatId, Integer messageId, String text) {

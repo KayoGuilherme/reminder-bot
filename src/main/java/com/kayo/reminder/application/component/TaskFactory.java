@@ -29,13 +29,14 @@ public class TaskFactory {
 	public TaskResponse create(CreateTaskRequest request) {
 		CreateTaskRequest normalized = new CreateTaskRequest(request.id(), request.chatId(),
 				Optional.ofNullable(request.title()).map(String::strip).orElse(""), request.urgency(),
-				request.startAt(), request.deadlineAt());
+				request.startAt(), request.deadlineAt(), request.language());
 		validator.validate(normalized).stream().map(violation -> TaskRule.valueOf(violation.getMessage()))
 				.min(Comparator.naturalOrder()).ifPresent(rule -> {
 					throw new TaskValidationException(rule);
 				});
 		Instant now = clock.instant();
 		return new TaskResponse(normalized.id(), normalized.chatId(), normalized.title(), normalized.urgency(),
-				TaskStatus.PENDING, normalized.startAt(), normalized.deadlineAt(), (short) 0, null, now, now);
+				TaskStatus.PENDING, normalized.startAt(), normalized.deadlineAt(), (short) 0, null, now, now,
+				normalized.language());
 	}
 }

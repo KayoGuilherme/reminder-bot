@@ -32,8 +32,12 @@ class ReminderMessageFactoryTest {
 	private static final Instant DEADLINE = Instant.parse("2026-11-22T15:00:00Z");
 
 	private static TaskResponse task(String title, Urgency urgency) {
+		return task(title, urgency, "en");
+	}
+
+	private static TaskResponse task(String title, Urgency urgency, String language) {
 		return new TaskResponse(UUID.randomUUID(), 1L, title, urgency, TaskStatus.PENDING, null, DEADLINE, (short) 0, null,
-				DEADLINE.minus(Duration.ofHours(1)), DEADLINE.minus(Duration.ofHours(1)));
+				DEADLINE.minus(Duration.ofHours(1)), DEADLINE.minus(Duration.ofHours(1)), language);
 	}
 
 	private static ReminderMessageFactory factory(String language) {
@@ -41,7 +45,7 @@ class ReminderMessageFactoryTest {
 	}
 
 	private static String render(String language, String title, Urgency urgency, int stage, Duration timeLeft) {
-		return factory(language).create(task(title, urgency), ReminderDecisionResponse.scheduled(stage),
+		return factory(language).create(task(title, urgency, language), ReminderDecisionResponse.scheduled(stage),
 				DEADLINE.minus(timeLeft));
 	}
 
@@ -74,6 +78,17 @@ class ReminderMessageFactoryTest {
 	void portugueseIsInPortuguese() {
 		assertThat(render("pt-BR", "Relatório", Urgency.HIGH, 1, Duration.ofMinutes(10)))
 				.isEqualTo("Relatório vence em 10 MINUTOS. Largue tudo e faça isso agora.");
+	}
+
+	@Test
+	void aPortugueseTaskIsRemindedInPortugueseWhateverTheAppLanguage() {
+		TaskResponse task = new TaskResponse(UUID.randomUUID(), 1L, "Relatório", Urgency.HIGH, TaskStatus.PENDING, null,
+				DEADLINE, (short) 0, null, DEADLINE.minus(Duration.ofHours(1)), DEADLINE.minus(Duration.ofHours(1)), "pt-BR");
+
+		assertThat(factory("en").create(task, ReminderDecisionResponse.scheduled(1), DEADLINE.minus(Duration.ofMinutes(10))))
+				.isEqualTo("Relatório vence em 10 MINUTOS. Largue tudo e faça isso agora.");
+		assertThat(factory("en").buttons(task).get(0)).extracting(b -> b.text())
+				.containsExactly("Feito ✅", "Adiar 10 min");
 	}
 
 	@Test
@@ -129,12 +144,12 @@ class ReminderMessageFactoryTest {
 	}
 
 	private static String overdue(String language, String title, int repeat, Duration overdueBy) {
-		return factory(language).create(task(title, Urgency.HIGH), ReminderDecisionResponse.overdue(3 + repeat, repeat),
+		return factory(language).create(task(title, Urgency.HIGH, language), ReminderDecisionResponse.overdue(3 + repeat, repeat),
 				DEADLINE.plus(overdueBy));
 	}
 
 	private static String finalMessage(String language, String title, Duration overdueBy) {
-		return factory(language).create(task(title, Urgency.HIGH), ReminderDecisionResponse.finalStop(14, 10),
+		return factory(language).create(task(title, Urgency.HIGH, language), ReminderDecisionResponse.finalStop(14, 10),
 				DEADLINE.plus(overdueBy));
 	}
 
@@ -201,7 +216,7 @@ class ReminderMessageFactoryTest {
 		assertThat(buttons.get(0)).extracting(b -> b.text()).containsExactly("Done \u2705", "Snooze 10 min");
 		assertThat(buttons.get(0)).extracting(b -> b.callbackData())
 				.containsExactly("task:done:" + task.id(), "task:snooze:" + task.id());
-		assertThat(factory("pt-BR").buttons(task).get(0)).extracting(b -> b.text())
+		assertThat(factory("en").buttons(task("X", Urgency.HIGH, "pt-BR")).get(0)).extracting(b -> b.text())
 				.containsExactly("Feito \u2705", "Adiar 10 min");
 	}
 }

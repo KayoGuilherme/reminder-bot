@@ -54,6 +54,9 @@ public class TaskEntity implements Persistable<UUID> {
 	@Column(name = "last_reminded_at")
 	private Instant lastRemindedAt;
 
+	@Column(nullable = false, length = 5)
+	private String language;
+
 	@Column(name = "created_at", nullable = false)
 	private Instant createdAt;
 

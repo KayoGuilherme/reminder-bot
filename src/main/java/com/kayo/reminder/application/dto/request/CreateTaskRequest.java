@@ -5,6 +5,7 @@ import com.kayo.reminder.domain.models.enums.Urgency;
 import jakarta.validation.constraints.Future;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.util.UUID;
@@ -16,7 +17,8 @@ public record CreateTaskRequest(
 		@NotBlank(message = "TITLE_REQUIRED") @Size(max = CreateTaskRequest.MAX_TITLE_LENGTH, message = "TITLE_TOO_LONG") String title,
 		@NotNull(message = "URGENCY_REQUIRED") Urgency urgency,
 		Instant startAt,
-		@NotNull(message = "DEADLINE_REQUIRED") @Future(message = "DEADLINE_NOT_IN_FUTURE") Instant deadlineAt) {
+		@NotNull(message = "DEADLINE_REQUIRED") @Future(message = "DEADLINE_NOT_IN_FUTURE") Instant deadlineAt,
+		@NotNull(message = "LANGUAGE_UNSUPPORTED") @Pattern(regexp = "en|pt-BR", message = "LANGUAGE_UNSUPPORTED") String language) {
 
 	public static final int MAX_TITLE_LENGTH = 500;
 }
