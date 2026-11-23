@@ -85,6 +85,37 @@ class SingleRetryTest {
 	}
 
 	@Test
+	void otherClientErrorsAreNotRetriedEither() {
+		for (HttpStatus status : new HttpStatus[] { HttpStatus.BAD_REQUEST, HttpStatus.FORBIDDEN, HttpStatus.NOT_FOUND }) {
+			AtomicInteger calls = new AtomicInteger();
+			assertThatThrownBy(() -> retry.call(() -> {
+				calls.incrementAndGet();
+				throw HttpClientErrorException.create(status, "x", HttpHeaders.EMPTY, new byte[0], null);
+			})).isInstanceOfSatisfying(ExternalServiceException.class,
+					ex -> assertThat(ex.kind()).isEqualTo(Kind.REJECTED));
+			assertThat(calls).as(status.toString()).hasValue(1);
+		}
+		assertThat(sleeps).isEmpty();
+	}
+
+	@Test
+	void theConfiguredBackoffIsReallyWaitedBetweenTheTwoAttempts() {
+		SingleRetry real = new SingleRetry("Fake", Duration.ofMillis(200));
+		AtomicInteger calls = new AtomicInteger();
+		long start = System.nanoTime();
+
+		real.call(() -> {
+			if (calls.incrementAndGet() == 1) {
+				throw serverError(HttpStatus.SERVICE_UNAVAILABLE);
+			}
+			return "ok";
+		});
+
+		assertThat(Duration.ofNanos(System.nanoTime() - start)).isGreaterThanOrEqualTo(Duration.ofMillis(190));
+		assertThat(calls).hasValue(2);
+	}
+
+	@Test
 	void externalServiceExceptionsPassThroughUntouched() {
 		AtomicInteger calls = new AtomicInteger();
 		assertThatThrownBy(() -> retry.call(() -> {

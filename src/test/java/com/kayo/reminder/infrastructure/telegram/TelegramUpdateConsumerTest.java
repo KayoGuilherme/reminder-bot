@@ -14,10 +14,13 @@ class TelegramUpdateConsumerTest {
 
 	private final List<IncomingCommand> handled = new ArrayList<>();
 	private final List<String> failOnText = new ArrayList<>();
+	private static final org.slf4j.Logger HANDLER_LOG = org.slf4j.LoggerFactory.getLogger(TelegramUpdateConsumerTest.class);
 
 	private final TelegramUpdateConsumer consumer = new TelegramUpdateConsumer(
 			new UpdateAllowlist(42), new TelegramUpdateMapper(), command -> {
+				HANDLER_LOG.info("handling update");
 				if (command.text() != null && failOnText.contains(command.text())) {
+					HANDLER_LOG.info("about to fail");
 					throw new IllegalStateException("boom");
 				}
 				handled.add(command);
@@ -65,5 +68,39 @@ class TelegramUpdateConsumerTest {
 	void unsupportedKindFromAllowedUserIsSkipped() {
 		consumer.consume(List.of(Updates.withMessage(1, Updates.message(100, 42, 1).build())));
 		assertThat(handled).isEmpty();
+	}
+
+	private static String cid(ch.qos.logback.classic.spi.ILoggingEvent event) {
+		return event.getMDCPropertyMap().get(com.kayo.reminder.infrastructure.logging.CorrelationId.KEY);
+	}
+
+	@Test
+	void everyLogLineOfOneUpdateCarriesTheSameIdAndDifferentUpdatesDiffer() {
+		failOnText.add("explode");
+		try (LogCapture handler = new LogCapture(TelegramUpdateConsumerTest.class);
+				LogCapture consumerLog = new LogCapture(TelegramUpdateConsumer.class)) {
+			consumer.consume(List.of(Updates.text(7, 42, 100, "explode"), Updates.text(8, 42, 100, "after")));
+
+			var first = handler.events().subList(0, 2);
+			var second = handler.events().subList(2, 3);
+			assertThat(first).extracting(e -> cid(e)).doesNotContainNull().containsOnly(cid(first.get(0)));
+			assertThat(second).extracting(e -> cid(e)).doesNotContainNull();
+			assertThat(cid(second.get(0))).isNotEqualTo(cid(first.get(0)));
+			// the failure line of the first update carries the first update's id
+			assertThat(consumerLog.events(Level.ERROR)).hasSize(1);
+			assertThat(cid(consumerLog.events(Level.ERROR).get(0))).isEqualTo(cid(first.get(0)));
+		}
+	}
+
+	@Test
+	void theIdIsClearedWhenAnUpdateEnds() {
+		failOnText.add("explode");
+		consumer.consume(List.of(Updates.text(7, 42, 100, "explode"), Updates.text(8, 42, 100, "after")));
+
+		assertThat(org.slf4j.MDC.get(com.kayo.reminder.infrastructure.logging.CorrelationId.KEY)).isNull();
+		try (LogCapture later = new LogCapture(TelegramUpdateConsumerTest.class)) {
+			HANDLER_LOG.info("unrelated");
+			assertThat(cid(later.events().get(0))).isNull();
+		}
 	}
 }

@@ -20,6 +20,17 @@ spring:
           time_zone: UTC
   flyway:
     enabled: true
+  # Graceful shutdown: a reminder or cleanup run in progress is allowed to finish (up to this long) before exit.
+  lifecycle:
+    timeout-per-shutdown-phase: ${APP_SHUTDOWN_TIMEOUT:30s}
+  task:
+    scheduling:
+      shutdown:
+        await-termination: true
+        await-termination-period: ${APP_SHUTDOWN_TIMEOUT:30s}
+
+server:
+  shutdown: graceful
 
 # Empty defaults (no secrets) make a missing variable fail @Validated binding with the property name.
 app:
@@ -29,6 +40,8 @@ app:
     enabled: ${APP_TELEGRAM_ENABLED:true}
     bot-token: ${TELEGRAM_BOT_TOKEN:}
     allowed-user-id: ${TELEGRAM_ALLOWED_USER_ID:}
+    connect-timeout: ${APP_TELEGRAM_CONNECT_TIMEOUT:5s}
+    read-timeout: ${APP_TELEGRAM_READ_TIMEOUT:30s}
   groq:
     api-key: ${GROQ_API_KEY:}
   gemini:
@@ -57,6 +70,13 @@ app:
   reminder:
     repeat-interval: ${APP_REMINDER_REPEAT_INTERVAL:2m}
     max-repeats: ${APP_REMINDER_MAX_REPEATS:10}
+  retention:
+    enabled: ${APP_RETENTION_ENABLED:true}
+    days: ${APP_RETENTION_DAYS:30}
+  resilience:
+    retry-backoff: ${APP_RETRY_BACKOFF:500ms}
+  shutdown:
+    timeout: ${APP_SHUTDOWN_TIMEOUT:30s}
 
 management:
   endpoints:
@@ -70,6 +90,13 @@ management:
       show-details: never
 
 logging:
+  # cid is the correlation id of the update or scheduled run being handled; "-" outside of one.
+  pattern:
+    level: "%5p [%X{cid:--}]"
   level:
     root: INFO
     com.kayo.reminder: INFO
+    # Spring's REST client logs whole request and response bodies at DEBUG (the voice transcript, the task text,
+    # the LLM prompt). Pinned so that turning on root DEBUG can never write what the owner said to the logs.
+    org.springframework.web.client: INFO
+    org.springframework.http.converter: INFO

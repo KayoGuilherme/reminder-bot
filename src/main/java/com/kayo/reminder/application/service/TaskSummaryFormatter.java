@@ -1,5 +1,6 @@
 package com.kayo.reminder.application.service;
 
+import com.kayo.reminder.domain.Task;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -30,6 +31,15 @@ class TaskSummaryFormatter {
 			text.append('\n').append(messages.get("task.summary.start", format(draft.startAt())));
 		}
 		return text.toString();
+	}
+
+	/** One entry of the /tasks list: marker, urgency and title, then the deadline (flagged when already passed). */
+	String listItem(Task task, Instant now) {
+		String head = messages.get("tasks.list.item", messages.get("tasks.marker." + task.urgency().name()),
+				messages.get("task.urgency." + task.urgency().name()), task.title());
+		String due = task.deadlineAt().isAfter(now) ? messages.get("tasks.list.due", format(task.deadlineAt()))
+				: messages.get("tasks.list.overdue", format(task.deadlineAt()));
+		return head + '\n' + due;
 	}
 
 	String format(Instant instant) {

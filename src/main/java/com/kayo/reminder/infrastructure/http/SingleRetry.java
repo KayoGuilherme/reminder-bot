@@ -43,6 +43,11 @@ public final class SingleRetry {
 		this(service, DEFAULT_DELAY, duration -> Thread.sleep(duration));
 	}
 
+	/** Pauses for {@code delay} between the two attempts (taken from {@code app.resilience.retry-backoff}). */
+	public SingleRetry(String service, Duration delay) {
+		this(service, delay, duration -> Thread.sleep(duration));
+	}
+
 	public SingleRetry(String service, Duration delay, Sleeper sleeper) {
 		this.service = service;
 		this.delay = delay;

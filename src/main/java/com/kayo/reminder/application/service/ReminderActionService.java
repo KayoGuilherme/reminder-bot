@@ -16,7 +16,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 /**
- * Done and Snooze are conditional updates, so pressing a button twice, or a stale one, changes nothing and gets a
+ * Done, Snooze and Cancel are conditional updates, so pressing a button twice, or a stale one, changes nothing and gets a
  * polite reply. A task of another chat is answered exactly like a missing one. Only ids are logged, never titles.
  */
 @Service
@@ -89,6 +89,26 @@ public class ReminderActionService implements HandleReminderActionUseCase {
 		show(chatId, messageId, messages.get("reminder.snoozed", task.title(), formatter.format(newDeadline)));
 	}
 
+	@Override
+	public void cancel(long chatId, Integer messageId, UUID taskId) {
+		Task task = owned(chatId, taskId);
+		if (task == null) {
+			reply(chatId, "reminder.action.not-available");
+			return;
+		}
+		if (task.status() != TaskStatus.PENDING) {
+			reply(chatId, cancelStaleReply(task.status()));
+			return;
+		}
+		if (!tasks.markCanceled(taskId, clock.instant())) {
+			reply(chatId, tasks.findById(taskId).map(t -> cancelStaleReply(t.status()))
+					.orElse("reminder.action.not-available"));
+			return;
+		}
+		log.info("Task {} canceled", taskId);
+		show(chatId, messageId, messages.get("tasks.canceled.confirmed", task.title()));
+	}
+
 	/** The task, only if it exists and belongs to {@code chatId}. */
 	private Task owned(long chatId, UUID taskId) {
 		return tasks.findById(taskId).filter(task -> task.chatId() == chatId).orElse(null);
@@ -96,6 +116,10 @@ public class ReminderActionService implements HandleReminderActionUseCase {
 
 	private static String staleReply(TaskStatus status) {
 		return status == TaskStatus.DONE ? "reminder.action.already-done" : "reminder.action.not-active";
+	}
+
+	private static String cancelStaleReply(TaskStatus status) {
+		return status == TaskStatus.CANCELED ? "tasks.action.already-canceled" : "reminder.action.not-active";
 	}
 
 	private void reply(long chatId, String key) {

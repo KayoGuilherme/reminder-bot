@@ -233,6 +233,48 @@ class AppPropertiesTest {
 		runner("app.llm.read-timeout=0s").run(context -> assertThat(context).hasFailed());
 	}
 
+	@Test
+	void retentionResilienceShutdownAndTelegramTimeoutsHaveDefaults() {
+		runner().run(context -> {
+			AppProperties props = context.getBean(AppProperties.class);
+			assertThat(props.retention().enabled()).isTrue();
+			assertThat(props.retention().days()).isEqualTo(30);
+			assertThat(props.resilience().retryBackoff()).isEqualTo(Duration.ofMillis(500));
+			assertThat(props.shutdown().timeout()).isEqualTo(Duration.ofSeconds(30));
+			assertThat(props.telegram().connectTimeout()).isEqualTo(Duration.ofSeconds(5));
+			assertThat(props.telegram().readTimeout()).isEqualTo(Duration.ofSeconds(30));
+		});
+	}
+
+	@Test
+	void retentionResilienceShutdownAndTelegramTimeoutsCanBeOverridden() {
+		runner("APP_RETENTION_DAYS=90", "APP_RETENTION_ENABLED=false", "APP_RETRY_BACKOFF=2s",
+				"APP_SHUTDOWN_TIMEOUT=10s", "APP_TELEGRAM_CONNECT_TIMEOUT=1s", "APP_TELEGRAM_READ_TIMEOUT=10s")
+				.run(context -> {
+					AppProperties props = context.getBean(AppProperties.class);
+					assertThat(props.retention().enabled()).isFalse();
+					assertThat(props.retention().days()).isEqualTo(90);
+					assertThat(props.resilience().retryBackoff()).isEqualTo(Duration.ofSeconds(2));
+					assertThat(props.shutdown().timeout()).isEqualTo(Duration.ofSeconds(10));
+					assertThat(props.telegram().connectTimeout()).isEqualTo(Duration.ofSeconds(1));
+					assertThat(props.telegram().readTimeout()).isEqualTo(Duration.ofSeconds(10));
+				});
+	}
+
+	@Test
+	void failsWhenRetentionResilienceShutdownOrTelegramTimeoutsInvalid() {
+		runner("APP_RETENTION_DAYS=0").run(context -> assertThat(context)
+				.hasFailed().getFailure().hasStackTraceContaining("retention.days"));
+		runner("APP_RETRY_BACKOFF=0s").run(context -> assertThat(context)
+				.hasFailed().getFailure().hasStackTraceContaining("resilience.retryBackoff"));
+		runner("APP_SHUTDOWN_TIMEOUT=-5s").run(context -> assertThat(context)
+				.hasFailed().getFailure().hasStackTraceContaining("shutdown.timeout"));
+		runner("APP_TELEGRAM_CONNECT_TIMEOUT=0s").run(context -> assertThat(context)
+				.hasFailed().getFailure().hasStackTraceContaining("telegram.connectTimeout"));
+		runner("APP_TELEGRAM_READ_TIMEOUT=0s").run(context -> assertThat(context)
+				.hasFailed().getFailure().hasStackTraceContaining("telegram.readTimeout"));
+	}
+
 	@EnableConfigurationProperties(AppProperties.class)
 	static class Config {
 	}

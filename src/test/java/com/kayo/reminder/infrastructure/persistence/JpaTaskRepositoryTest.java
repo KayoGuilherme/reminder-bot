@@ -222,6 +222,98 @@ class JpaTaskRepositoryTest extends AbstractIntegrationTest {
 		assertThat(repository.findById(pending).orElseThrow().deadlineAt()).isEqualTo(NOW);
 	}
 
+	private UUID insertFor(long chatId, TaskStatus status, Instant deadline, Instant updatedAt) {
+		UUID id = UUID.randomUUID();
+		jdbc.update("""
+				insert into tasks (id, chat_id, title, urgency, status, deadline_at, updated_at)
+				values (?, ?, 'listed', 'LOW', ?, ?, ?)
+				""", id, chatId, status.name(), Timestamp.from(deadline), Timestamp.from(updatedAt));
+		return id;
+	}
+
+	@Test
+	void pendingTasksOfAChatComeEarliestDeadlineFirstWithOverdueAndTiesStable() {
+		jdbc.update("delete from tasks");
+		UUID later = insertFor(42, TaskStatus.PENDING, NOW.plus(Duration.ofHours(5)), NOW);
+		UUID overdue = insertFor(42, TaskStatus.PENDING, NOW.minus(Duration.ofHours(1)), NOW);
+		UUID tieA = insertFor(42, TaskStatus.PENDING, NOW.plus(Duration.ofHours(1)), NOW);
+		UUID tieB = insertFor(42, TaskStatus.PENDING, NOW.plus(Duration.ofHours(1)), NOW);
+		insertFor(42, TaskStatus.DONE, NOW.minus(Duration.ofHours(3)), NOW);
+		insertFor(42, TaskStatus.CANCELED, NOW.minus(Duration.ofHours(2)), NOW);
+		insertFor(7, TaskStatus.PENDING, NOW.minus(Duration.ofHours(4)), NOW);
+
+		List<UUID> ids = repository.findPendingByChat(42, 20).stream().map(Task::id).toList();
+
+		List<UUID> ties = tieA.toString().compareTo(tieB.toString()) < 0 ? List.of(tieA, tieB) : List.of(tieB, tieA);
+		assertThat(ids).containsExactly(overdue, ties.get(0), ties.get(1), later);
+		assertThat(repository.countPendingByChat(42)).isEqualTo(4);
+		assertThat(repository.countPendingByChat(7)).isEqualTo(1);
+		assertThat(repository.countPendingByChat(99)).isZero();
+	}
+
+	@Test
+	void pendingListHonorsTheLimit() {
+		jdbc.update("delete from tasks");
+		UUID first = insertFor(42, TaskStatus.PENDING, NOW.plusSeconds(10), NOW);
+		UUID second = insertFor(42, TaskStatus.PENDING, NOW.plusSeconds(20), NOW);
+		insertFor(42, TaskStatus.PENDING, NOW.plusSeconds(30), NOW);
+
+		assertThat(repository.findPendingByChat(42, 2).stream().map(Task::id).toList())
+				.containsExactly(first, second);
+		assertThat(repository.countPendingByChat(42)).isEqualTo(3);
+	}
+
+	@Test
+	void markCanceledAppliesOnceToAPendingTask() {
+		UUID id = insert(Urgency.HIGH, TaskStatus.PENDING, NOW, 4);
+
+		assertThat(repository.markCanceled(id, NOW)).isTrue();
+		assertThat(repository.markCanceled(id, NOW.plusSeconds(5))).isFalse();
+
+		Task task = repository.findById(id).orElseThrow();
+		assertThat(task.status()).isEqualTo(TaskStatus.CANCELED);
+		assertThat(task.updatedAt()).isEqualTo(NOW);
+		assertThat(task.lastReminderStage()).isEqualTo((short) 4);
+	}
+
+	@Test
+	void markCanceledIsRefusedForDoneAndUnknownTasks() {
+		UUID done = insert(Urgency.HIGH, TaskStatus.DONE, NOW, 0);
+
+		assertThat(repository.markCanceled(done, NOW)).isFalse();
+		assertThat(repository.markCanceled(UUID.randomUUID(), NOW)).isFalse();
+		assertThat(repository.findById(done).orElseThrow().status()).isEqualTo(TaskStatus.DONE);
+	}
+
+	@Test
+	void aCanceledTaskIsNoLongerAReminderCandidate() {
+		jdbc.update("delete from tasks");
+		UUID id = insert(Urgency.HIGH, TaskStatus.PENDING, NOW.plus(Duration.ofMinutes(5)), 0);
+		repository.markCanceled(id, NOW);
+
+		assertThat(candidateIds(NOW.plus(Duration.ofMinutes(10)))).isEmpty();
+	}
+
+	@Test
+	void deleteFinishedBeforeRemovesOnlyOldDoneAndCanceledTasks() {
+		jdbc.update("delete from tasks");
+		Instant cutoff = NOW.minus(Duration.ofDays(30));
+		UUID oldDone = insertFor(42, TaskStatus.DONE, NOW, cutoff.minusSeconds(1));
+		UUID oldCanceled = insertFor(42, TaskStatus.CANCELED, NOW, cutoff.minus(Duration.ofDays(15)));
+		UUID atBoundary = insertFor(42, TaskStatus.DONE, NOW, cutoff);
+		UUID recentDone = insertFor(42, TaskStatus.DONE, NOW, NOW.minus(Duration.ofDays(29)));
+		UUID oldPending = insertFor(42, TaskStatus.PENDING, NOW, cutoff.minus(Duration.ofDays(170)));
+
+		assertThat(repository.deleteFinishedBefore(cutoff)).isEqualTo(2);
+
+		assertThat(repository.findById(oldDone)).isEmpty();
+		assertThat(repository.findById(oldCanceled)).isEmpty();
+		assertThat(repository.findById(atBoundary)).isPresent();
+		assertThat(repository.findById(recentDone)).isPresent();
+		assertThat(repository.findById(oldPending)).isPresent();
+		assertThat(repository.deleteFinishedBefore(cutoff)).isZero();
+	}
+
 	/** Not a performance benchmark: it checks the planner is allowed to use the (status, deadline_at) index. */
 	@Test
 	void candidateQueryCanUseTheStatusDeadlineIndex() {

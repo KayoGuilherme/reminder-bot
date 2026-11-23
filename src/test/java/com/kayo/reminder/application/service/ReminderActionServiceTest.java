@@ -139,6 +139,89 @@ class ReminderActionServiceTest {
 		assertThat(sender.texts).hasSize(1);
 	}
 
+	// --- Cancel ----------------------------------------------------------------------------------------------
+
+	@Test
+	void cancelMarksThePendingTaskCanceledAndEditsTheMessageIntoAConfirmation() {
+		Task task = task(TaskStatus.PENDING, NOW, 5);
+
+		service().cancel(CHAT, MESSAGE, task.id());
+
+		assertThat(stored(task).status()).isEqualTo(TaskStatus.CANCELED);
+		assertThat(stored(task).updatedAt()).isEqualTo(NOW);
+		assertThat(sender.edits).hasSize(1);
+		assertThat(sender.edits.get(0).messageId()).isEqualTo(MESSAGE);
+		assertThat(sender.edits.get(0).text()).isEqualTo("Canceled ❌\n\nSend the report");
+		assertThat(sender.texts).isEmpty();
+	}
+
+	@Test
+	void cancelTwiceLeavesItCanceledAndRepliesPolitely() {
+		Task task = task(TaskStatus.PENDING, NOW, 5);
+		ReminderActionService service = service();
+		service.cancel(CHAT, MESSAGE, task.id());
+
+		service.cancel(CHAT, 70, task.id());
+
+		assertThat(stored(task).status()).isEqualTo(TaskStatus.CANCELED);
+		assertThat(sender.edits).hasSize(1);
+		assertThat(sender.texts).extracting(t -> t.text()).containsExactly(text("tasks.action.already-canceled"));
+	}
+
+	@Test
+	void cancelOnADoneTaskChangesNothingAndSaysItIsNotActive() {
+		Task task = task(TaskStatus.DONE, NOW, 1);
+
+		service().cancel(CHAT, MESSAGE, task.id());
+
+		assertThat(stored(task).status()).isEqualTo(TaskStatus.DONE);
+		assertThat(sender.edits).isEmpty();
+		assertThat(sender.texts).extracting(t -> t.text()).containsExactly(text("reminder.action.not-active"));
+	}
+
+	@Test
+	void cancelOnAnUnknownTaskOrAnotherChatsTaskGetsTheSameReplyAndChangesNothing() {
+		Task task = task(TaskStatus.PENDING, NOW, 1);
+
+		service().cancel(CHAT, MESSAGE, UUID.randomUUID());
+		service().cancel(999L, MESSAGE, task.id());
+
+		assertThat(stored(task)).isEqualTo(task);
+		assertThat(sender.edits).isEmpty();
+		assertThat(sender.texts).extracting(t -> t.text())
+				.containsExactly(text("reminder.action.not-available"), text("reminder.action.not-available"));
+	}
+
+	@Test
+	void whenTheEditFailsTheCancelConfirmationIsANewMessageAndCancelIsNotRepeated() {
+		Task task = task(TaskStatus.PENDING, NOW, 1);
+		sender.result = SendResult.failed(FailureReason.REJECTED);
+
+		service().cancel(CHAT, MESSAGE, task.id());
+
+		assertThat(stored(task).status()).isEqualTo(TaskStatus.CANCELED);
+		assertThat(sender.edits).hasSize(1);
+		assertThat(sender.texts).extracting(t -> t.text()).containsExactly("Canceled ❌\n\nSend the report");
+	}
+
+	@Test
+	void aCanceledTaskIsNoLongerAReminderCandidate() {
+		Task task = task(TaskStatus.PENDING, NOW.plus(Duration.ofMinutes(5)), 0);
+
+		service().cancel(CHAT, MESSAGE, task.id());
+
+		assertThat(repository.findReminderCandidates(NOW.plus(Duration.ofMinutes(10)))).isEmpty();
+	}
+
+	@Test
+	void theCancelButtonDataFitsTelegramsLimit() {
+		String data = com.kayo.reminder.application.port.in.HandleReminderActionUseCase.CANCEL_PREFIX
+				+ UUID.randomUUID();
+		assertThat(data.getBytes(java.nio.charset.StandardCharsets.UTF_8)).hasSizeLessThanOrEqualTo(64);
+		assertThat(data).doesNotStartWith(
+				com.kayo.reminder.application.port.in.CreateTaskFromVoiceUseCase.CANCEL_PREFIX);
+	}
+
 	// --- Snooze ----------------------------------------------------------------------------------------------
 
 	@Test
@@ -221,5 +304,16 @@ class ReminderActionServiceTest {
 
 		assertThat(sender.edits.get(0).text()).startsWith("Adiada por 10 minutos").contains("Novo prazo");
 		assertThat(sender.edits.get(1).text()).startsWith("Feito");
+	}
+
+	@Test
+	void cancelTextsAreInThePortugueseWhenConfigured() {
+		Task task = task(TaskStatus.PENDING, NOW, 1);
+
+		service("pt-BR").cancel(CHAT, MESSAGE, task.id());
+		service("pt-BR").cancel(CHAT, MESSAGE, task.id());
+
+		assertThat(sender.edits.get(0).text()).startsWith("Cancelada");
+		assertThat(sender.texts.get(0).text()).isEqualTo(TestMessages.text("pt-BR", "tasks.action.already-canceled"));
 	}
 }

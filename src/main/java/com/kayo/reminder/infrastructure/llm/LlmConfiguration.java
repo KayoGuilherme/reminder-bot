@@ -16,6 +16,6 @@ public class LlmConfiguration {
 		AppProperties.Llm llm = properties.llm();
 		return new ChatCompletionsTaskParser(
 				RestClients.create(llm.baseUrl(), llm.connectTimeout(), llm.readTimeout()), llm, clock,
-				properties.timezone(), new SingleRetry("Task parser"));
+				properties.timezone(), new SingleRetry("Task parser", properties.resilience().retryBackoff()));
 	}
 }

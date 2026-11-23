@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 import com.kayo.reminder.application.port.in.CreateTaskFromVoiceUseCase;
 import com.kayo.reminder.application.port.in.HandleReminderActionUseCase;
 import com.kayo.reminder.application.port.in.IncomingCommand;
+import com.kayo.reminder.application.port.in.ListTasksUseCase;
 import com.kayo.reminder.application.port.out.SendResult;
 import com.kayo.reminder.application.port.out.SendResult.FailureReason;
 import com.kayo.reminder.testsupport.RecordingSender;
@@ -23,9 +24,10 @@ class IncomingCommandServiceTest {
 	private final RecordingSender sender = new RecordingSender();
 	private final CreateTaskFromVoiceUseCase createTask = mock(CreateTaskFromVoiceUseCase.class);
 	private final HandleReminderActionUseCase reminderActions = mock(HandleReminderActionUseCase.class);
+	private final ListTasksUseCase listTasks = mock(ListTasksUseCase.class);
 
 	private IncomingCommandService service(String languageTag) {
-		return new IncomingCommandService(sender, TestMessages.of(languageTag), createTask, reminderActions);
+		return new IncomingCommandService(sender, TestMessages.of(languageTag), createTask, reminderActions, listTasks);
 	}
 
 	private static String english(String key) {
@@ -153,12 +155,35 @@ class IncomingCommandServiceTest {
 	}
 
 	@Test
+	void cancelTaskButtonIsAcknowledgedAndHandedToTheReminderActions() {
+		UUID id = UUID.randomUUID();
+		service("en").handle(IncomingCommand.callback(10, 42, 79, "cb-3", "task:cancel:" + id));
+		assertThat(sender.answeredCallbacks).containsExactly("cb-3");
+		verify(reminderActions).cancel(10, 79, id);
+		verifyNoMoreInteractions(reminderActions);
+		verifyNoInteractions(createTask);
+		assertThat(sender.texts).isEmpty();
+	}
+
+	@Test
+	void tasksCommandListsThePendingTasksOfTheChat() {
+		IncomingCommandService service = service("en");
+		service.handle(IncomingCommand.text(10, 42, 1, "/tasks"));
+		service.handle(IncomingCommand.text(10, 42, 2, "/TASKS@my_bot"));
+		service.handle(IncomingCommand.text(10, 42, 3, "  /tasks now"));
+		verify(listTasks, org.mockito.Mockito.times(3)).list(10);
+		verifyNoInteractions(createTask);
+		assertThat(sender.texts).isEmpty();
+	}
+
+	@Test
 	void malformedReminderButtonDataIsOnlyAcknowledged() {
 		IncomingCommandService service = service("en");
 		service.handle(IncomingCommand.callback(10, 42, 1, "cb-1", "task:done:not-a-uuid"));
 		service.handle(IncomingCommand.callback(10, 42, 1, "cb-2", "task:snooze:"));
 		service.handle(IncomingCommand.callback(10, 42, 1, "cb-3", "task:done"));
-		assertThat(sender.answeredCallbacks).containsExactly("cb-1", "cb-2", "cb-3");
+		service.handle(IncomingCommand.callback(10, 42, 1, "cb-4", "task:cancel:not-a-uuid"));
+		assertThat(sender.answeredCallbacks).containsExactly("cb-1", "cb-2", "cb-3", "cb-4");
 		assertThat(sender.texts).isEmpty();
 		verifyNoInteractions(reminderActions);
 	}

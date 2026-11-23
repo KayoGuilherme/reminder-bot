@@ -35,4 +35,18 @@ public interface TaskRepository {
 	 * (stage above 0), so a repeated press does not snooze twice; returns whether it was applied.
 	 */
 	boolean snooze(UUID id, Instant expectedDeadline, Instant newDeadline, Instant at);
+
+	/** The chat's PENDING tasks, earliest deadline first (then id), at most {@code limit}. */
+	List<Task> findPendingByChat(long chatId, int limit);
+
+	long countPendingByChat(long chatId);
+
+	/** Sets the task to CANCELED if it is still PENDING; returns whether it was applied. */
+	boolean markCanceled(UUID id, Instant at);
+
+	/**
+	 * Permanently deletes DONE and CANCELED tasks last changed strictly before {@code cutoff}; PENDING tasks are
+	 * never touched. Returns how many were deleted.
+	 */
+	int deleteFinishedBefore(Instant cutoff);
 }

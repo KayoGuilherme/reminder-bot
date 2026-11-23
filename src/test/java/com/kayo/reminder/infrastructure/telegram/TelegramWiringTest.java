@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import com.kayo.reminder.application.port.in.CreateTaskFromVoiceUseCase;
 import com.kayo.reminder.application.port.in.HandleIncomingCommandUseCase;
 import com.kayo.reminder.application.port.in.HandleReminderActionUseCase;
+import com.kayo.reminder.application.port.in.ListTasksUseCase;
 import com.kayo.reminder.application.port.out.AudioDownloadPort;
 import com.kayo.reminder.application.port.out.TaskParserPort;
 import com.kayo.reminder.application.port.out.TaskRepository;
@@ -24,6 +25,7 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.telegram.telegrambots.longpolling.TelegramBotsLongPollingApplication;
 import org.telegram.telegrambots.longpolling.starter.SpringLongPollingBot;
 import org.telegram.telegrambots.longpolling.starter.TelegramBotStarterConfiguration;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
@@ -54,6 +56,9 @@ class TelegramWiringTest {
 			assertThat(context).hasSingleBean(AudioDownloadPort.class);
 			assertThat(context).hasSingleBean(CreateTaskFromVoiceUseCase.class);
 			assertThat(context).hasSingleBean(HandleReminderActionUseCase.class);
+			assertThat(context).hasSingleBean(ListTasksUseCase.class);
+			assertThat(context).hasSingleBean(TelegramBotsLongPollingApplication.class);
+			assertThat(context).hasBean("telegramStartupCheck");
 		});
 	}
 
@@ -71,6 +76,8 @@ class TelegramWiringTest {
 					assertThat(context).doesNotHaveBean(CreateTaskFromVoiceUseCase.class);
 					assertThat(context).doesNotHaveBean(HandleReminderActionUseCase.class);
 					assertThat(context).doesNotHaveBean(TelegramUpdateConsumer.class);
+					assertThat(context).doesNotHaveBean(ListTasksUseCase.class);
+					assertThat(context).doesNotHaveBean("telegramStartupCheck");
 				});
 	}
 

@@ -15,6 +15,6 @@ public class SttConfiguration {
 		AppProperties.Stt stt = properties.stt();
 		return new GroqTranscriptionClient(
 				RestClients.create(stt.baseUrl(), stt.connectTimeout(), stt.readTimeout()),
-				properties.groq().apiKey(), stt, new SingleRetry("Transcription"));
+				properties.groq().apiKey(), stt, new SingleRetry("Transcription", properties.resilience().retryBackoff()));
 	}
 }

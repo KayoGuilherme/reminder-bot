@@ -25,13 +25,18 @@ public record AppProperties(
 		@DefaultValue @Valid Voice voice,
 		@DefaultValue @Valid Draft draft,
 		@DefaultValue @Valid Scheduler scheduler,
-		@DefaultValue @Valid Reminder reminder) {
+		@DefaultValue @Valid Reminder reminder,
+		@DefaultValue @Valid Retention retention,
+		@DefaultValue @Valid Resilience resilience,
+		@DefaultValue @Valid Shutdown shutdown) {
 
 	public record Telegram(
 			@NotBlank String botToken,
 			@NotNull Long allowedUserId,
 			@DefaultValue("true") boolean enabled,
-			@DefaultValue @Valid Retry retry) {
+			@DefaultValue @Valid Retry retry,
+			@DefaultValue("5s") @NotNull @DurationMin(nanos = 1) Duration connectTimeout,
+			@DefaultValue("30s") @NotNull @DurationMin(nanos = 1) Duration readTimeout) {
 
 		@Override
 		public String toString() {
@@ -102,5 +107,19 @@ public record AppProperties(
 	public record Reminder(
 			@DefaultValue("2m") @NotNull @DurationMin(nanos = 1) Duration repeatInterval,
 			@DefaultValue("10") @Min(1) int maxRepeats) {
+	}
+
+	/** The daily cleanup of DONE and CANCELED tasks older than {@code days}; {@code enabled=false} turns it off. */
+	public record Retention(
+			@DefaultValue("true") boolean enabled,
+			@DefaultValue("30") @Min(1) int days) {
+	}
+
+	/** The pause before the one retry of a transient speech-to-text or LLM failure. */
+	public record Resilience(@DefaultValue("500ms") @NotNull @DurationMin(nanos = 1) Duration retryBackoff) {
+	}
+
+	/** How long shutdown waits for work in progress (the running reminder or retention job) before exiting. */
+	public record Shutdown(@DefaultValue("30s") @NotNull @DurationMin(nanos = 1) Duration timeout) {
 	}
 }

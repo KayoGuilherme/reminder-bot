@@ -1,6 +1,7 @@
 package com.kayo.reminder.infrastructure.scheduling;
 
 import com.kayo.reminder.application.port.in.SendDueRemindersUseCase;
+import com.kayo.reminder.infrastructure.logging.CorrelationId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -21,10 +22,12 @@ class ReminderScheduler {
 
 	@Scheduled(fixedDelayString = "${app.scheduler.interval}")
 	void tick() {
-		try {
-			useCase.sendDueReminders();
-		} catch (RuntimeException e) {
-			log.error("Reminder run failed: {}", e.getClass().getSimpleName(), e);
+		try (CorrelationId scope = CorrelationId.open()) {
+			try {
+				useCase.sendDueReminders();
+			} catch (RuntimeException e) {
+				log.error("Reminder run failed: {}", e.getClass().getSimpleName(), e);
+			}
 		}
 	}
 }

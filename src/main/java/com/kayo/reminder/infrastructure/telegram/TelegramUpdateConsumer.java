@@ -2,6 +2,7 @@ package com.kayo.reminder.infrastructure.telegram;
 
 import com.kayo.reminder.application.port.in.HandleIncomingCommandUseCase;
 import com.kayo.reminder.application.port.in.IncomingCommand;
+import com.kayo.reminder.infrastructure.logging.CorrelationId;
 import java.util.List;
 import java.util.Optional;
 import org.slf4j.Logger;
@@ -11,7 +12,7 @@ import org.telegram.telegrambots.meta.api.objects.Update;
 
 /**
  * Entry point of long polling. Updates are handled in order; anything thrown while handling one is logged
- * (update id only, never the content) so that the next update and the polling loop are unaffected.
+ * (update id only, never the content), and every log line of an update carries one correlation id so that the next update and the polling loop are unaffected.
  */
 class TelegramUpdateConsumer implements LongPollingUpdateConsumer {
 
@@ -31,11 +32,13 @@ class TelegramUpdateConsumer implements LongPollingUpdateConsumer {
 	@Override
 	public void consume(List<Update> updates) {
 		for (Update update : updates) {
-			try {
-				process(update);
-			}
-			catch (Exception ex) {
-				log.error("Failed to process update id={}", update == null ? null : update.getUpdateId(), ex);
+			try (CorrelationId scope = CorrelationId.open()) {
+				try {
+					process(update);
+				}
+				catch (Exception ex) {
+					log.error("Failed to process update id={}", update == null ? null : update.getUpdateId(), ex);
+				}
 			}
 		}
 	}

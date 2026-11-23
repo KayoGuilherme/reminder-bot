@@ -57,7 +57,7 @@ class TelegramFlowTest {
 		IncomingCommandService service = new IncomingCommandService(
 				new TelegramMessageSender(api.client(), retry, FakeTelegramApi.TOKEN, d -> { }),
 				new Messages(source, props), org.mockito.Mockito.mock(CreateTaskFromVoiceUseCase.class),
-				reminderActions);
+				reminderActions, org.mockito.Mockito.mock(com.kayo.reminder.application.port.in.ListTasksUseCase.class));
 		return new TelegramUpdateConsumer(new UpdateAllowlist(42), new TelegramUpdateMapper(), decorate.apply(service));
 	}
 

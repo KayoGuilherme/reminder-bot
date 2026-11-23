@@ -4,6 +4,7 @@ import com.kayo.reminder.application.port.in.CreateTaskFromVoiceUseCase;
 import com.kayo.reminder.application.port.in.HandleIncomingCommandUseCase;
 import com.kayo.reminder.application.port.in.HandleReminderActionUseCase;
 import com.kayo.reminder.application.port.in.IncomingCommand;
+import com.kayo.reminder.application.port.in.ListTasksUseCase;
 import com.kayo.reminder.application.port.out.MessageSenderPort;
 import java.util.Locale;
 import java.util.Optional;
@@ -13,8 +14,8 @@ import org.springframework.stereotype.Service;
 
 /**
  * Routes what the user sent: slash commands are answered here, voice and other text start the task flow, and the
- * Confirm/Cancel buttons of that flow are handed back to it, and the Done/Snooze buttons of reminders go to the
- * reminder actions.
+ * Confirm/Cancel buttons of that flow are handed back to it, and the Done/Snooze/Cancel buttons of task messages go
+ * to the reminder actions. {@code /tasks} lists the pending tasks.
  */
 @Service
 @ConditionalOnProperty(prefix = "app.telegram", name = "enabled", havingValue = "true", matchIfMissing = true)
@@ -24,13 +25,15 @@ public class IncomingCommandService implements HandleIncomingCommandUseCase {
 	private final Messages messages;
 	private final CreateTaskFromVoiceUseCase createTask;
 	private final HandleReminderActionUseCase reminderActions;
+	private final ListTasksUseCase listTasks;
 
 	public IncomingCommandService(MessageSenderPort sender, Messages messages, CreateTaskFromVoiceUseCase createTask,
-			HandleReminderActionUseCase reminderActions) {
+			HandleReminderActionUseCase reminderActions, ListTasksUseCase listTasks) {
 		this.sender = sender;
 		this.messages = messages;
 		this.createTask = createTask;
 		this.reminderActions = reminderActions;
+		this.listTasks = listTasks;
 	}
 
 	@Override
@@ -45,12 +48,13 @@ public class IncomingCommandService implements HandleIncomingCommandUseCase {
 	private void handleText(IncomingCommand command) {
 		switch (slashCommand(command.text())) {
 			case "/start", "/help" -> sender.sendText(command.chatId(), messages.get("usage"));
+			case "/tasks" -> listTasks.list(command.chatId());
 			case "" -> createTask.submit(command);
 			default -> sender.sendText(command.chatId(), messages.get("not-supported-yet"));
 		}
 	}
 
-	/** Always acknowledged, so the client stops showing progress; only the task and reminder buttons do anything more. */
+	/** Always acknowledged, so the client stops showing progress; only the task, reminder and list buttons do anything more. */
 	private void handleCallback(IncomingCommand command) {
 		sender.answerCallback(command.callbackId());
 		String data = command.callbackData();
@@ -68,6 +72,10 @@ public class IncomingCommandService implements HandleIncomingCommandUseCase {
 		else if (data.startsWith(HandleReminderActionUseCase.DONE_PREFIX)) {
 			uuid(data, HandleReminderActionUseCase.DONE_PREFIX)
 					.ifPresent(id -> reminderActions.done(command.chatId(), command.messageId(), id));
+		}
+		else if (data.startsWith(HandleReminderActionUseCase.CANCEL_PREFIX)) {
+			uuid(data, HandleReminderActionUseCase.CANCEL_PREFIX)
+					.ifPresent(id -> reminderActions.cancel(command.chatId(), command.messageId(), id));
 		}
 		else if (data.startsWith(HandleReminderActionUseCase.SNOOZE_PREFIX)) {
 			uuid(data, HandleReminderActionUseCase.SNOOZE_PREFIX)

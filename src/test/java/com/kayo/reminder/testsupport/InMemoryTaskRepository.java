@@ -79,6 +79,37 @@ public class InMemoryTaskRepository implements TaskRepository {
 		return true;
 	}
 
+	@Override
+	public List<Task> findPendingByChat(long chatId, int limit) {
+		return tasks.values().stream()
+				.filter(t -> t.status() == TaskStatus.PENDING && t.chatId() == chatId)
+				.sorted(Comparator.comparing(Task::deadlineAt).thenComparing(Task::id))
+				.limit(limit).toList();
+	}
+
+	@Override
+	public long countPendingByChat(long chatId) {
+		return tasks.values().stream().filter(t -> t.status() == TaskStatus.PENDING && t.chatId() == chatId).count();
+	}
+
+	@Override
+	public boolean markCanceled(UUID id, Instant at) {
+		Task t = tasks.get(id);
+		if (t == null || t.status() != TaskStatus.PENDING) {
+			return false;
+		}
+		tasks.put(id, Task.restore(t.id(), t.chatId(), t.title(), t.urgency(), TaskStatus.CANCELED, t.startAt(),
+				t.deadlineAt(), t.lastReminderStage(), t.lastRemindedAt(), t.createdAt(), at));
+		return true;
+	}
+
+	@Override
+	public int deleteFinishedBefore(Instant cutoff) {
+		int before = tasks.size();
+		tasks.values().removeIf(t -> t.status() != TaskStatus.PENDING && t.updatedAt().isBefore(cutoff));
+		return before - tasks.size();
+	}
+
 	public Task add(long chatId, String title, Urgency urgency, TaskStatus status,
 			Instant deadline) {
 		Task task = Task.restore(UUID.randomUUID(), chatId, title, urgency, status, null, deadline, (short) 0, null,

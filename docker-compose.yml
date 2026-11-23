@@ -26,6 +26,8 @@ services:
     build: .
     image: ${APP_IMAGE:-reminder-bot:local}
     restart: unless-stopped
+    # Longer than app.shutdown.timeout (default 30s) so a stop lets a reminder run in progress finish.
+    stop_grace_period: 45s
     logging: *default-logging
     env_file: .env
     environment:

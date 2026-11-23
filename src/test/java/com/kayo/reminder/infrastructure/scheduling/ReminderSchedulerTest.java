@@ -94,4 +94,35 @@ class ReminderSchedulerTest {
 			return 0;
 		}, "app.scheduler.interval=20ms").run(context -> await(() -> runs.get() >= 3));
 	}
+
+	@Test
+	void eachRunHasItsOwnCorrelationIdAndNothingLeaksAfterwards() {
+		var ids = new java.util.concurrent.CopyOnWriteArrayList<String>();
+		ReminderScheduler scheduler = new ReminderScheduler(() -> {
+			ids.add(org.slf4j.MDC.get(com.kayo.reminder.infrastructure.logging.CorrelationId.KEY));
+			return 0;
+		});
+
+		scheduler.tick();
+		scheduler.tick();
+
+		assertThat(ids).hasSize(2).doesNotContainNull();
+		assertThat(ids.get(0)).isNotEqualTo(ids.get(1));
+		assertThat(org.slf4j.MDC.get(com.kayo.reminder.infrastructure.logging.CorrelationId.KEY)).isNull();
+	}
+
+	@Test
+	void aFailedRunIsLoggedWithItsCorrelationId() {
+		ReminderScheduler scheduler = new ReminderScheduler(() -> {
+			throw new IllegalStateException("boom");
+		});
+		try (var logs = new com.kayo.reminder.testsupport.LogCapture(ReminderScheduler.class)) {
+			scheduler.tick();
+
+			var errors = logs.events(ch.qos.logback.classic.Level.ERROR);
+			assertThat(errors).hasSize(1);
+			assertThat(errors.get(0).getMDCPropertyMap())
+					.containsKey(com.kayo.reminder.infrastructure.logging.CorrelationId.KEY);
+		}
+	}
 }

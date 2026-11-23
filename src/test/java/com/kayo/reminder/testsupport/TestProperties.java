@@ -20,7 +20,8 @@ public final class TestProperties {
 		return new AppProperties(zone, language,
 				new AppProperties.Telegram(BOT_TOKEN, 42L, true,
 						new AppProperties.Telegram.Retry(3, Duration.ofMillis(1), Duration.ofMillis(2),
-								Duration.ofSeconds(1))),
+								Duration.ofSeconds(1)),
+						Duration.ofSeconds(5), Duration.ofSeconds(30)),
 				new AppProperties.Groq("groq-key"), new AppProperties.Gemini("gemini-key"),
 				new AppProperties.Stt("pt", "whisper-large-v3-turbo", "https://api.groq.com/openai/v1",
 						Duration.ofSeconds(5), Duration.ofSeconds(30)),
@@ -28,6 +29,9 @@ public final class TestProperties {
 						Duration.ofSeconds(5), Duration.ofSeconds(30)),
 				new AppProperties.Voice(maxVoiceSeconds), new AppProperties.Draft(draftTtl),
 				new AppProperties.Scheduler(true, Duration.ofSeconds(30)),
-				new AppProperties.Reminder(Duration.ofMinutes(2), 10));
+				new AppProperties.Reminder(Duration.ofMinutes(2), 10),
+				new AppProperties.Retention(true, 30),
+				new AppProperties.Resilience(Duration.ofMillis(500)),
+				new AppProperties.Shutdown(Duration.ofSeconds(30)));
 	}
 }

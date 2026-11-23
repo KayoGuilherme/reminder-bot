@@ -6,11 +6,15 @@ import com.kayo.reminder.application.port.out.MessageSenderPort;
 import com.kayo.reminder.config.AppProperties;
 import com.kayo.reminder.infrastructure.http.SingleRetry;
 import com.kayo.reminder.infrastructure.http.RestClients;
+import java.time.Duration;
 import okhttp3.OkHttpClient;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.ApplicationRunner;
 import org.springframework.web.client.RestClient;
+import org.telegram.telegrambots.longpolling.TelegramBotsLongPollingApplication;
+import org.telegram.telegrambots.longpolling.util.TelegramOkHttpClientFactory.DefaultOkHttpClientCreator;
 import org.telegram.telegrambots.client.okhttp.OkHttpTelegramClient;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 
@@ -19,9 +23,42 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
 @ConditionalOnProperty(prefix = "app.telegram", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class TelegramConfiguration {
 
+	/**
+	 * The long-polling request waits up to 50 seconds for news, so its read timeout must stay above that; it still
+	 * ends after this bounded time, and connecting is cut at the configured connect timeout.
+	 */
+	private static final Duration LONG_POLL_READ_TIMEOUT = Duration.ofSeconds(75);
+
 	@Bean
 	TelegramClient telegramClient(AppProperties properties) {
-		return new OkHttpTelegramClient(properties.telegram().botToken());
+		return new OkHttpTelegramClient(sendClient(properties), properties.telegram().botToken());
+	}
+
+	static OkHttpClient sendClient(AppProperties properties) {
+		return new OkHttpClient.Builder()
+				.connectTimeout(properties.telegram().connectTimeout())
+				.readTimeout(properties.telegram().readTimeout())
+				.build();
+	}
+
+	static OkHttpClient longPollClient(AppProperties properties) {
+		return new DefaultOkHttpClientCreator().get().newBuilder()
+				.connectTimeout(properties.telegram().connectTimeout())
+				.readTimeout(LONG_POLL_READ_TIMEOUT)
+				.build();
+	}
+
+	/** Replaces the starter's default application so that its polling client has bounded timeouts too. */
+	@Bean
+	TelegramBotsLongPollingApplication telegramBotsLongPollingApplication(AppProperties properties) {
+		return new TelegramBotsLongPollingApplication(com.fasterxml.jackson.databind.ObjectMapper::new,
+				() -> longPollClient(properties));
+	}
+
+	@Bean
+	ApplicationRunner telegramStartupCheck(TelegramClient client) {
+		TelegramStartupCheck check = new TelegramStartupCheck(client);
+		return args -> check.run();
 	}
 
 	/** Downloads use their own client so the configured timeouts do not change how messages are sent. */
@@ -34,7 +71,7 @@ public class TelegramConfiguration {
 		RestClient files = RestClients.create("https://api.telegram.org", properties.stt().connectTimeout(),
 				properties.stt().readTimeout());
 		return new TelegramAudioDownloader(new OkHttpTelegramClient(http, properties.telegram().botToken()), files,
-				properties.telegram().botToken(), new SingleRetry("Telegram download"));
+				properties.telegram().botToken(), new SingleRetry("Telegram download", properties.resilience().retryBackoff()));
 	}
 
 	@Bean

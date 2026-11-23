@@ -114,4 +114,56 @@ class JpaTaskRepository implements TaskRepository {
 				.executeUpdate();
 		return updated == 1;
 	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public List<Task> findPendingByChat(long chatId, int limit) {
+		return entityManager.createQuery("""
+				select t from TaskEntity t
+				where t.status = :pending and t.chatId = :chatId
+				order by t.deadlineAt, t.id
+				""", TaskEntity.class)
+				.setParameter("pending", TaskStatus.PENDING)
+				.setParameter("chatId", chatId)
+				.setMaxResults(limit)
+				.getResultList().stream().map(TaskEntity::toDomain).toList();
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public long countPendingByChat(long chatId) {
+		return entityManager.createQuery(
+				"select count(t) from TaskEntity t where t.status = :pending and t.chatId = :chatId", Long.class)
+				.setParameter("pending", TaskStatus.PENDING)
+				.setParameter("chatId", chatId)
+				.getSingleResult();
+	}
+
+	@Override
+	@Transactional
+	public boolean markCanceled(UUID id, Instant at) {
+		int updated = entityManager.createQuery("""
+				update TaskEntity t
+				set t.status = :canceled, t.updatedAt = :at
+				where t.id = :id and t.status = :pending
+				""")
+				.setParameter("canceled", TaskStatus.CANCELED)
+				.setParameter("at", at)
+				.setParameter("id", id)
+				.setParameter("pending", TaskStatus.PENDING)
+				.executeUpdate();
+		return updated == 1;
+	}
+
+	@Override
+	@Transactional
+	public int deleteFinishedBefore(Instant cutoff) {
+		return entityManager.createQuery("""
+				delete from TaskEntity t
+				where t.status in (:finished) and t.updatedAt < :cutoff
+				""")
+				.setParameter("finished", List.of(TaskStatus.DONE, TaskStatus.CANCELED))
+				.setParameter("cutoff", cutoff)
+				.executeUpdate();
+	}
 }
