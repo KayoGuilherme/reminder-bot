@@ -1,0 +1,7 @@
+package com.kayo.reminder.service;
+
+/** javadoc */
+class Sample {
+	// line
+	int value; /* block */
+}

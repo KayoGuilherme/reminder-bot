@@ -1,37 +1,46 @@
 package com.kayo.reminder.application.service;
 
-import com.kayo.reminder.application.port.in.HandleReminderActionUseCase;
-import com.kayo.reminder.application.port.out.MessageSenderPort;
-import com.kayo.reminder.application.port.out.TaskRepository;
+import com.kayo.reminder.application.component.MessageReplacer;
+import com.kayo.reminder.application.component.Messages;
+import com.kayo.reminder.application.component.TaskSummaryFormatter;
+import com.kayo.reminder.application.dto.response.TaskResponse;
 import com.kayo.reminder.config.AppProperties;
-import com.kayo.reminder.domain.ReminderPolicy;
-import com.kayo.reminder.domain.Task;
-import com.kayo.reminder.domain.TaskStatus;
+import com.kayo.reminder.domain.models.enums.TaskStatus;
+import com.kayo.reminder.transport.telegram.MessageSender;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Comparator;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.function.BooleanSupplier;
+import java.util.function.Function;
+import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
-/**
- * Done, Snooze and Cancel are conditional updates, so pressing a button twice, or a stale one, changes nothing and gets a
- * polite reply. A task of another chat is answered exactly like a missing one. Only ids are logged, never titles.
- */
 @Service
 @ConditionalOnProperty(prefix = "app.telegram", name = "enabled", havingValue = "true", matchIfMissing = true)
-public class ReminderActionService implements HandleReminderActionUseCase {
+public class ReminderActionService {
+
+	public static final String DONE_PREFIX = "task:done:";
+	public static final String SNOOZE_PREFIX = "task:snooze:";
+	public static final String CANCEL_PREFIX = "task:cancel:";
+
+	private static final String NOT_AVAILABLE = "reminder.action.not-available";
+	private static final String NOT_ACTIVE = "reminder.action.not-active";
+	private static final String ALREADY_SNOOZED = "reminder.action.already-snoozed";
 
 	private static final Logger log = LoggerFactory.getLogger(ReminderActionService.class);
 
-	private final TaskRepository tasks;
-	private final MessageSenderPort sender;
+	private final TaskService tasks;
+	private final MessageSender sender;
 	private final Messages messages;
 	private final TaskSummaryFormatter formatter;
 	private final Clock clock;
 
-	public ReminderActionService(TaskRepository tasks, MessageSenderPort sender, Messages messages,
+	public ReminderActionService(TaskService tasks, MessageSender sender, Messages messages,
 			AppProperties properties, Clock clock) {
 		this.tasks = tasks;
 		this.sender = sender;
@@ -40,97 +49,83 @@ public class ReminderActionService implements HandleReminderActionUseCase {
 		this.clock = clock;
 	}
 
-	@Override
 	public void done(long chatId, Integer messageId, UUID taskId) {
-		Task task = owned(chatId, taskId);
-		if (task == null) {
-			reply(chatId, "reminder.action.not-available");
-			return;
-		}
-		if (task.status() != TaskStatus.PENDING) {
-			reply(chatId, staleReply(task.status()));
-			return;
-		}
-		if (!tasks.markDone(taskId, clock.instant())) {
-			reply(chatId, tasks.findById(taskId).map(t -> staleReply(t.status()))
-					.orElse("reminder.action.not-available"));
-			return;
-		}
-		log.info("Task {} marked done", taskId);
-		show(chatId, messageId, messages.get("reminder.done.confirmed", task.title()));
+		owned(chatId, taskId).ifPresentOrElse(
+				task -> finish(chatId, messageId, task, ReminderActionService::doneStaleKey,
+						() -> tasks.markDone(taskId, clock.instant()), "marked done", "reminder.done.confirmed"),
+				() -> reply(chatId, NOT_AVAILABLE));
 	}
 
-	@Override
-	public void snooze(long chatId, Integer messageId, UUID taskId) {
-		Task task = owned(chatId, taskId);
-		if (task == null) {
-			reply(chatId, "reminder.action.not-available");
-			return;
-		}
-		if (task.status() != TaskStatus.PENDING) {
-			reply(chatId, "reminder.action.not-active");
-			return;
-		}
-		if (task.lastReminderStage() == 0) {
-			reply(chatId, "reminder.action.already-snoozed");
-			return;
-		}
-		Instant now = clock.instant();
-		Instant base = task.deadlineAt().isAfter(now) ? task.deadlineAt() : now;
-		Instant newDeadline = base.plus(ReminderPolicy.SNOOZE);
-		if (!tasks.snooze(taskId, task.deadlineAt(), newDeadline, now)) {
-			reply(chatId, tasks.findById(taskId)
-					.map(t -> t.status() == TaskStatus.PENDING ? "reminder.action.already-snoozed"
-							: "reminder.action.not-active")
-					.orElse("reminder.action.not-available"));
-			return;
-		}
-		log.info("Task {} snoozed", taskId);
-		show(chatId, messageId, messages.get("reminder.snoozed", task.title(), formatter.format(newDeadline)));
-	}
-
-	@Override
 	public void cancel(long chatId, Integer messageId, UUID taskId) {
-		Task task = owned(chatId, taskId);
-		if (task == null) {
-			reply(chatId, "reminder.action.not-available");
-			return;
-		}
-		if (task.status() != TaskStatus.PENDING) {
-			reply(chatId, cancelStaleReply(task.status()));
-			return;
-		}
-		if (!tasks.markCanceled(taskId, clock.instant())) {
-			reply(chatId, tasks.findById(taskId).map(t -> cancelStaleReply(t.status()))
-					.orElse("reminder.action.not-available"));
-			return;
-		}
-		log.info("Task {} canceled", taskId);
-		show(chatId, messageId, messages.get("tasks.canceled.confirmed", task.title()));
+		owned(chatId, taskId).ifPresentOrElse(
+				task -> finish(chatId, messageId, task, ReminderActionService::cancelStaleKey,
+						() -> tasks.markCanceled(taskId, clock.instant()), "canceled", "tasks.canceled.confirmed"),
+				() -> reply(chatId, NOT_AVAILABLE));
 	}
 
-	/** The task, only if it exists and belongs to {@code chatId}. */
-	private Task owned(long chatId, UUID taskId) {
-		return tasks.findById(taskId).filter(task -> task.chatId() == chatId).orElse(null);
+	public void snooze(long chatId, Integer messageId, UUID taskId) {
+		owned(chatId, taskId).ifPresentOrElse(task -> snoozeOwned(chatId, messageId, task),
+				() -> reply(chatId, NOT_AVAILABLE));
 	}
 
-	private static String staleReply(TaskStatus status) {
-		return status == TaskStatus.DONE ? "reminder.action.already-done" : "reminder.action.not-active";
+	private void snoozeOwned(long chatId, Integer messageId, TaskResponse task) {
+		Instant now = clock.instant();
+		Instant newDeadline = Stream.of(task.deadlineAt(), now).max(Comparator.naturalOrder()).orElseThrow()
+				.plus(ReminderPolicy.SNOOZE);
+		snoozeFailure(task, newDeadline, now).ifPresentOrElse(key -> reply(chatId, key), () -> {
+			log.info("Task {} snoozed", task.id());
+			show(chatId, messageId, messages.get("reminder.snoozed", task.title(), formatter.format(newDeadline)));
+		});
 	}
 
-	private static String cancelStaleReply(TaskStatus status) {
-		return status == TaskStatus.CANCELED ? "tasks.action.already-canceled" : "reminder.action.not-active";
+	private Optional<String> snoozeFailure(TaskResponse task, Instant newDeadline, Instant now) {
+		return Optional.of(task).filter(candidate -> candidate.status() != TaskStatus.PENDING)
+				.map(candidate -> NOT_ACTIVE)
+				.or(() -> Optional.of(task).filter(candidate -> candidate.lastReminderStage() == 0)
+						.map(candidate -> ALREADY_SNOOZED))
+				.or(() -> Optional.of(task)
+						.filter(candidate -> !tasks.snooze(candidate.id(), candidate.deadlineAt(), newDeadline, now))
+						.map(candidate -> snoozeRaceKey(candidate.id())));
+	}
+
+	private String snoozeRaceKey(UUID taskId) {
+		return tasks.findById(taskId).map(current -> current.status() == TaskStatus.PENDING ? ALREADY_SNOOZED : NOT_ACTIVE)
+				.orElse(NOT_AVAILABLE);
+	}
+
+	private void finish(long chatId, Integer messageId, TaskResponse task, Function<TaskStatus, String> staleKey,
+			BooleanSupplier apply, String logText, String confirmedKey) {
+		failure(task, staleKey, apply).ifPresentOrElse(key -> reply(chatId, key), () -> {
+			log.info("Task {} {}", task.id(), logText);
+			show(chatId, messageId, messages.get(confirmedKey, task.title()));
+		});
+	}
+
+	private Optional<String> failure(TaskResponse task, Function<TaskStatus, String> staleKey, BooleanSupplier apply) {
+		return Optional.of(task).filter(candidate -> candidate.status() != TaskStatus.PENDING)
+				.map(candidate -> staleKey.apply(candidate.status()))
+				.or(() -> Optional.of(task).filter(candidate -> !apply.getAsBoolean())
+						.map(candidate -> tasks.findById(candidate.id())
+								.map(current -> staleKey.apply(current.status())).orElse(NOT_AVAILABLE)));
+	}
+
+	private Optional<TaskResponse> owned(long chatId, UUID taskId) {
+		return tasks.findById(taskId).filter(task -> task.chatId() == chatId);
+	}
+
+	private static String doneStaleKey(TaskStatus status) {
+		return status == TaskStatus.DONE ? "reminder.action.already-done" : NOT_ACTIVE;
+	}
+
+	private static String cancelStaleKey(TaskStatus status) {
+		return status == TaskStatus.CANCELED ? "tasks.action.already-canceled" : NOT_ACTIVE;
 	}
 
 	private void reply(long chatId, String key) {
 		sender.sendText(chatId, messages.get(key));
 	}
 
-	/** Replaces the reminder message (removing its buttons); falls back to a new message if that fails. */
 	private void show(long chatId, Integer messageId, String text) {
-		if (messageId != null && sender.editText(chatId, messageId, text).success()) {
-			return;
-		}
-		sender.sendText(chatId, text);
+		MessageReplacer.show(sender, chatId, messageId, text);
 	}
 }

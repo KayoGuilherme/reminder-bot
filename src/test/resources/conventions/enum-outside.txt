@@ -1,0 +1,5 @@
+package com.kayo.reminder.application.dto.response;
+
+enum Sample {
+	FIRST
+}

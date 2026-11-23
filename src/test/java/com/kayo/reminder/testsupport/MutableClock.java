@@ -6,7 +6,6 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 
-/** A UTC clock tests can move forward. */
 public final class MutableClock extends Clock {
 
 	private volatile Instant now;

@@ -11,26 +11,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** A local HTTP server for adapter tests: replies with queued answers in order and records every request. */
 public final class FakeHttpServer implements AutoCloseable {
 
-	public record Reply(int status, String body, long delayMillis) {
-	}
-
-	public record Request(String method, String path, Map<String, String> headers, byte[] body) {
-
-		public String bodyText() {
-			return new String(body, StandardCharsets.ISO_8859_1);
-		}
-
-		public String header(String name) {
-			return headers.get(name.toLowerCase());
-		}
-	}
-
 	private final HttpServer server;
-	private final Deque<Reply> replies = new ArrayDeque<>();
-	private final List<Request> requests = new ArrayList<>();
+	private final Deque<FakeReply> replies = new ArrayDeque<>();
+	private final List<FakeRequest> requests = new ArrayList<>();
 
 	public FakeHttpServer() throws IOException {
 		server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -38,11 +23,11 @@ public final class FakeHttpServer implements AutoCloseable {
 			byte[] body = exchange.getRequestBody().readAllBytes();
 			Map<String, String> headers = new LinkedHashMap<>();
 			exchange.getRequestHeaders().forEach((k, v) -> headers.put(k.toLowerCase(), String.join(",", v)));
-			Reply reply;
+			FakeReply reply;
 			synchronized (this) {
-				requests.add(new Request(exchange.getRequestMethod(), exchange.getRequestURI().getPath(), headers,
+				requests.add(new FakeRequest(exchange.getRequestMethod(), exchange.getRequestURI().getPath(), headers,
 						body));
-				reply = replies.isEmpty() ? new Reply(500, "no reply queued", 0) : replies.pollFirst();
+				reply = replies.isEmpty() ? new FakeReply(500, "no reply queued", 0) : replies.pollFirst();
 			}
 			try {
 				if (reply.delayMillis() > 0) {
@@ -54,13 +39,11 @@ public final class FakeHttpServer implements AutoCloseable {
 				exchange.getResponseBody().write(bytes);
 			}
 			catch (InterruptedException | IOException ignored) {
-				// the client gave up (timeout test)
 			}
 			finally {
 				exchange.close();
 			}
 		});
-		// Concurrent handlers, so a slow reply does not hide a second request from the recorder.
 		server.setExecutor(java.util.concurrent.Executors.newCachedThreadPool(r -> {
 			Thread t = new Thread(r);
 			t.setDaemon(true);
@@ -74,16 +57,16 @@ public final class FakeHttpServer implements AutoCloseable {
 	}
 
 	public synchronized FakeHttpServer reply(int status, String body) {
-		replies.addLast(new Reply(status, body, 0));
+		replies.addLast(new FakeReply(status, body, 0));
 		return this;
 	}
 
 	public synchronized FakeHttpServer replySlowly(int status, String body, long delayMillis) {
-		replies.addLast(new Reply(status, body, delayMillis));
+		replies.addLast(new FakeReply(status, body, delayMillis));
 		return this;
 	}
 
-	public synchronized List<Request> requests() {
+	public synchronized List<FakeRequest> requests() {
 		return List.copyOf(requests);
 	}
 

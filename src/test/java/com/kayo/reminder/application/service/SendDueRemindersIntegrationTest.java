@@ -14,21 +14,21 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.kayo.reminder.AbstractIntegrationTest;
-import com.kayo.reminder.application.port.out.MessageSenderPort;
-import com.kayo.reminder.application.port.out.SendResult;
-import com.kayo.reminder.application.port.out.SendResult.FailureReason;
-import com.kayo.reminder.application.port.out.TaskRepository;
-import com.kayo.reminder.domain.ReminderPolicy;
-import com.kayo.reminder.domain.Task;
-import com.kayo.reminder.domain.TaskStatus;
-import com.kayo.reminder.domain.Urgency;
+import com.kayo.reminder.application.component.ReminderMessageFactory;
+import com.kayo.reminder.application.dto.response.ButtonResponse;
+import com.kayo.reminder.application.dto.response.SendResultResponse;
+import com.kayo.reminder.application.dto.response.TaskResponse;
+import com.kayo.reminder.domain.models.enums.SendFailureReason;
+import com.kayo.reminder.domain.models.enums.TaskStatus;
+import com.kayo.reminder.domain.models.enums.Urgency;
 import com.kayo.reminder.testsupport.MutableClock;
 import com.kayo.reminder.testsupport.TestMessages;
 import com.kayo.reminder.testsupport.TestProperties;
-import java.time.ZoneOffset;
+import com.kayo.reminder.transport.telegram.MessageSender;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -37,7 +37,6 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 
-/** The reminder job against a real PostgreSQL, with a mocked sender and a clock the test moves. */
 class SendDueRemindersIntegrationTest extends AbstractIntegrationTest {
 
 	private static final Instant START = Instant.parse("2026-11-22T14:48:00Z");
@@ -45,9 +44,9 @@ class SendDueRemindersIntegrationTest extends AbstractIntegrationTest {
 	private static final long CHAT = 4242L;
 
 	@Autowired
-	TaskRepository repository;
+	TaskService repository;
 
-	private final MessageSenderPort sender = mock(MessageSenderPort.class);
+	private final MessageSender sender = mock(MessageSender.class);
 	private MutableClock clock;
 	private SendDueRemindersService job;
 	private ReminderActionService actions;
@@ -56,15 +55,15 @@ class SendDueRemindersIntegrationTest extends AbstractIntegrationTest {
 	void setUp() {
 		jdbc.update("delete from tasks");
 		clock = new MutableClock(START);
-		when(sender.sendWithButtons(anyLong(), anyString(), anyList())).thenReturn(SendResult.ok(1));
-		when(sender.sendText(anyLong(), anyString())).thenReturn(SendResult.ok(2));
-		when(sender.editText(anyLong(), anyInt(), anyString())).thenReturn(SendResult.ok(9));
+		when(sender.sendWithButtons(anyLong(), anyString(), anyList())).thenReturn(SendResultResponse.ok(1));
+		when(sender.sendText(anyLong(), anyString())).thenReturn(SendResultResponse.ok(2));
+		when(sender.editText(anyLong(), anyInt(), anyString())).thenReturn(SendResultResponse.ok(9));
 		job = newJob(sender);
 		actions = new ReminderActionService(repository, sender, TestMessages.of("en"),
 				TestProperties.of(ZoneOffset.UTC, "en"), clock);
 	}
 
-	private SendDueRemindersService newJob(MessageSenderPort port) {
+	private SendDueRemindersService newJob(MessageSender port) {
 		return new SendDueRemindersService(repository, port, new ReminderMessageFactory(TestMessages.of("en")),
 				ReminderPolicy.defaults(), clock);
 	}
@@ -82,7 +81,6 @@ class SendDueRemindersIntegrationTest extends AbstractIntegrationTest {
 		return repository.findById(id).orElseThrow().lastReminderStage();
 	}
 
-	/** Runs the job every 30 seconds until {@code until}, returning the instants at which a message went out. */
 	private List<Instant> tickUntil(Instant until) {
 		List<Instant> sentAt = new ArrayList<>();
 		while (!clock.instant().isAfter(until)) {
@@ -108,7 +106,7 @@ class SendDueRemindersIntegrationTest extends AbstractIntegrationTest {
 				"Send the report is due in 10 MINUTES. Drop everything and do it now.");
 		assertThat(texts.getAllValues().get(1)).contains("5 MINUTES");
 		assertThat(texts.getAllValues().get(2)).contains("0 MINUTES");
-		Task stored = repository.findById(id).orElseThrow();
+		TaskResponse stored = repository.findById(id).orElseThrow();
 		assertThat(stored.lastReminderStage()).isEqualTo((short) 3);
 		assertThat(stored.lastRemindedAt()).isEqualTo(DEADLINE);
 	}
@@ -117,13 +115,13 @@ class SendDueRemindersIntegrationTest extends AbstractIntegrationTest {
 	void aFailedSendKeepsTheStageAndTheNextTickRetries() {
 		UUID id = insert(CHAT, "Send the report", Urgency.LOW, TaskStatus.PENDING, DEADLINE);
 		clock.advance(Duration.ofMinutes(2));
-		when(sender.sendWithButtons(anyLong(), anyString(), anyList())).thenReturn(SendResult.failed(FailureReason.TRANSIENT));
+		when(sender.sendWithButtons(anyLong(), anyString(), anyList())).thenReturn(SendResultResponse.failed(SendFailureReason.TRANSIENT));
 
 		assertThat(job.sendDueReminders()).isZero();
 		assertThat(stage(id)).isZero();
 		assertThat(repository.findById(id).orElseThrow().lastRemindedAt()).isNull();
 
-		when(sender.sendWithButtons(anyLong(), anyString(), anyList())).thenReturn(SendResult.ok(2));
+		when(sender.sendWithButtons(anyLong(), anyString(), anyList())).thenReturn(SendResultResponse.ok(2));
 		clock.advance(Duration.ofSeconds(30));
 		assertThat(job.sendDueReminders()).isEqualTo(1);
 		assertThat(stage(id)).isEqualTo(1);
@@ -135,7 +133,7 @@ class SendDueRemindersIntegrationTest extends AbstractIntegrationTest {
 		clock.advance(Duration.ofMinutes(2));
 		assertThat(job.sendDueReminders()).isEqualTo(1);
 
-		MessageSenderPort afterRestart = mock(MessageSenderPort.class);
+		MessageSender afterRestart = mock(MessageSender.class);
 		SendDueRemindersService restarted = newJob(afterRestart);
 		clock.advance(Duration.ofSeconds(30));
 
@@ -192,8 +190,6 @@ class SendDueRemindersIntegrationTest extends AbstractIntegrationTest {
 		assertThat(stage(fine)).isEqualTo(1);
 	}
 
-	// --- overdue nagging, Done and Snooze ---------------------------------------------------------------------
-
 	private List<String> sentTexts() {
 		ArgumentCaptor<String> texts = ArgumentCaptor.forClass(String.class);
 		verify(sender, org.mockito.Mockito.atLeast(0)).sendWithButtons(eq(CHAT), texts.capture(), anyList());
@@ -228,7 +224,7 @@ class SendDueRemindersIntegrationTest extends AbstractIntegrationTest {
 
 		tickUntil(DEADLINE.plus(Duration.ofMinutes(3)));
 
-		ArgumentCaptor<List<List<com.kayo.reminder.application.port.out.Button>>> buttons = ArgumentCaptor
+		ArgumentCaptor<List<List<com.kayo.reminder.application.dto.response.ButtonResponse>>> buttons = ArgumentCaptor
 				.forClass(List.class);
 		verify(sender, times(4)).sendWithButtons(eq(CHAT), anyString(), buttons.capture());
 		assertThat(buttons.getAllValues()).allSatisfy(rows -> assertThat(rows.get(0))
@@ -261,7 +257,7 @@ class SendDueRemindersIntegrationTest extends AbstractIntegrationTest {
 		actions.snooze(CHAT, 9, id);
 		actions.snooze(CHAT, 9, id);
 
-		Task snoozed = repository.findById(id).orElseThrow();
+		TaskResponse snoozed = repository.findById(id).orElseThrow();
 		assertThat(snoozed.deadlineAt()).isEqualTo(snoozedAt.plus(Duration.ofMinutes(10)));
 		assertThat(snoozed.lastReminderStage()).isZero();
 		verify(sender, times(1)).editText(eq(CHAT), eq(9), contains("Snoozed"));

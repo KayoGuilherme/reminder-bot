@@ -1,0 +1,7 @@
+package com.kayo.reminder.application.dto.response;
+
+class Task {
+	static Task create() {
+		return new Task();
+	}
+}

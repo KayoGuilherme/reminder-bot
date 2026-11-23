@@ -1,37 +1,35 @@
 package com.kayo.reminder.application.service;
 
-import com.kayo.reminder.application.port.in.HandleReminderActionUseCase;
-import com.kayo.reminder.application.port.in.ListTasksUseCase;
-import com.kayo.reminder.application.port.out.Button;
-import com.kayo.reminder.application.port.out.MessageSenderPort;
-import com.kayo.reminder.application.port.out.TaskRepository;
+import com.kayo.reminder.application.component.Messages;
+import com.kayo.reminder.application.component.TaskSummaryFormatter;
+import com.kayo.reminder.application.dto.response.ButtonResponse;
+import com.kayo.reminder.application.dto.response.TaskResponse;
 import com.kayo.reminder.config.AppProperties;
-import com.kayo.reminder.domain.Task;
+import com.kayo.reminder.transport.telegram.MessageSender;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
-/**
- * One message per task, in deadline order, so each message's Done and Cancel buttons can be edited into a
- * confirmation. A failed send is reported by the sender and does not stop the rest. Only ids and counts are logged.
- */
 @Service
 @ConditionalOnProperty(prefix = "app.telegram", name = "enabled", havingValue = "true", matchIfMissing = true)
-public class ListTasksService implements ListTasksUseCase {
+public class ListTasksService {
+
+	public static final int LIMIT = 20;
 
 	private static final Logger log = LoggerFactory.getLogger(ListTasksService.class);
 
-	private final TaskRepository tasks;
-	private final MessageSenderPort sender;
+	private final TaskService tasks;
+	private final MessageSender sender;
 	private final Messages messages;
 	private final TaskSummaryFormatter formatter;
 	private final Clock clock;
 
-	public ListTasksService(TaskRepository tasks, MessageSenderPort sender, Messages messages,
+	public ListTasksService(TaskService tasks, MessageSender sender, Messages messages,
 			AppProperties properties, Clock clock) {
 		this.tasks = tasks;
 		this.sender = sender;
@@ -40,26 +38,24 @@ public class ListTasksService implements ListTasksUseCase {
 		this.clock = clock;
 	}
 
-	@Override
 	public void list(long chatId) {
-		List<Task> pending = tasks.findPendingByChat(chatId, LIMIT);
-		if (pending.isEmpty()) {
-			sender.sendText(chatId, messages.get("tasks.empty"));
-			return;
-		}
+		List<TaskResponse> pending = tasks.findPendingByChat(chatId, LIMIT);
+		Optional.of(pending).filter(found -> !found.isEmpty()).ifPresentOrElse(found -> show(chatId, found),
+				() -> sender.sendText(chatId, messages.get("tasks.empty")));
+	}
+
+	private void show(long chatId, List<TaskResponse> pending) {
 		Instant now = clock.instant();
-		for (Task task : pending) {
-			sender.sendWithButtons(chatId, formatter.listItem(task, now), List.of(List.of(
-					new Button(messages.get("tasks.done-button"), HandleReminderActionUseCase.DONE_PREFIX + task.id()),
-					new Button(messages.get("tasks.cancel-button"),
-							HandleReminderActionUseCase.CANCEL_PREFIX + task.id()))));
-		}
-		if (pending.size() == LIMIT) {
-			long more = tasks.countPendingByChat(chatId) - LIMIT;
-			if (more > 0) {
-				sender.sendText(chatId, messages.get("tasks.more", more));
-			}
-		}
+		pending.forEach(task -> sender.sendWithButtons(chatId, formatter.listItem(task, now), List.of(List.of(
+				new ButtonResponse(messages.get("tasks.done-button"), ReminderActionService.DONE_PREFIX + task.id()),
+				new ButtonResponse(messages.get("tasks.cancel-button"), ReminderActionService.CANCEL_PREFIX + task.id())))));
+		announceRemaining(chatId, pending.size());
 		log.info("Listed {} pending tasks for chat {}", pending.size(), chatId);
+	}
+
+	private void announceRemaining(long chatId, int shown) {
+		Optional.of(shown).filter(count -> count == LIMIT).map(count -> tasks.countPendingByChat(chatId) - LIMIT)
+				.filter(more -> more > 0)
+				.ifPresent(more -> sender.sendText(chatId, messages.get("tasks.more", more)));
 	}
 }

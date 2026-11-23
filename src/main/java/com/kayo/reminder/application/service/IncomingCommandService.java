@@ -1,109 +1,81 @@
 package com.kayo.reminder.application.service;
 
-import com.kayo.reminder.application.port.in.CreateTaskFromVoiceUseCase;
-import com.kayo.reminder.application.port.in.HandleIncomingCommandUseCase;
-import com.kayo.reminder.application.port.in.HandleReminderActionUseCase;
-import com.kayo.reminder.application.port.in.IncomingCommand;
-import com.kayo.reminder.application.port.in.ListTasksUseCase;
-import com.kayo.reminder.application.port.out.MessageSenderPort;
+import com.kayo.reminder.application.component.CallbackRoute;
+import com.kayo.reminder.application.component.Messages;
+import com.kayo.reminder.application.dto.request.IncomingCommandRequest;
+import com.kayo.reminder.domain.models.enums.CommandKind;
+import com.kayo.reminder.transport.telegram.MessageSender;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
-import java.util.UUID;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
-/**
- * Routes what the user sent: slash commands are answered here, voice and other text start the task flow, and the
- * Confirm/Cancel buttons of that flow are handed back to it, and the Done/Snooze/Cancel buttons of task messages go
- * to the reminder actions. {@code /tasks} lists the pending tasks.
- */
 @Service
 @ConditionalOnProperty(prefix = "app.telegram", name = "enabled", havingValue = "true", matchIfMissing = true)
-public class IncomingCommandService implements HandleIncomingCommandUseCase {
+public class IncomingCommandService {
 
-	private final MessageSenderPort sender;
+	private final MessageSender sender;
 	private final Messages messages;
-	private final CreateTaskFromVoiceUseCase createTask;
-	private final HandleReminderActionUseCase reminderActions;
-	private final ListTasksUseCase listTasks;
+	private final Map<CommandKind, Consumer<IncomingCommandRequest>> handlersByKind;
+	private final Map<String, Consumer<IncomingCommandRequest>> textCommands;
+	private final List<CallbackRoute> callbackRoutes;
 
-	public IncomingCommandService(MessageSenderPort sender, Messages messages, CreateTaskFromVoiceUseCase createTask,
-			HandleReminderActionUseCase reminderActions, ListTasksUseCase listTasks) {
+	public IncomingCommandService(MessageSender sender, Messages messages, CreateTaskFromVoiceService createTask,
+			ReminderActionService reminderActions, ListTasksService listTasks) {
 		this.sender = sender;
 		this.messages = messages;
-		this.createTask = createTask;
-		this.reminderActions = reminderActions;
-		this.listTasks = listTasks;
+		this.handlersByKind = Map.of(
+				CommandKind.CALLBACK, this::handleCallback,
+				CommandKind.VOICE, createTask::submit,
+				CommandKind.TEXT, this::handleText);
+		this.textCommands = Map.of(
+				"/start", this::sendUsage,
+				"/help", this::sendUsage,
+				"/tasks", command -> listTasks.list(command.chatId()),
+				"", createTask::submit);
+		this.callbackRoutes = List.of(
+				new CallbackRoute(CreateTaskFromVoiceService.CONFIRM_PREFIX, createTask::confirm),
+				new CallbackRoute(CreateTaskFromVoiceService.CANCEL_PREFIX, createTask::cancel),
+				new CallbackRoute(ReminderActionService.DONE_PREFIX, reminderActions::done),
+				new CallbackRoute(ReminderActionService.CANCEL_PREFIX, reminderActions::cancel),
+				new CallbackRoute(ReminderActionService.SNOOZE_PREFIX, reminderActions::snooze));
 	}
 
-	@Override
-	public void handle(IncomingCommand command) {
-		switch (command.kind()) {
-			case CALLBACK -> handleCallback(command);
-			case VOICE -> createTask.submit(command);
-			case TEXT -> handleText(command);
-		}
+	public void handle(IncomingCommandRequest command) {
+		handlersByKind.get(command.kind()).accept(command);
 	}
 
-	private void handleText(IncomingCommand command) {
-		switch (slashCommand(command.text())) {
-			case "/start", "/help" -> sender.sendText(command.chatId(), messages.get("usage"));
-			case "/tasks" -> listTasks.list(command.chatId());
-			case "" -> createTask.submit(command);
-			default -> sender.sendText(command.chatId(), messages.get("not-supported-yet"));
-		}
+	private void handleText(IncomingCommandRequest command) {
+		textCommands.getOrDefault(slashCommand(command.text()), this::sendNotSupported).accept(command);
 	}
 
-	/** Always acknowledged, so the client stops showing progress; only the task, reminder and list buttons do anything more. */
-	private void handleCallback(IncomingCommand command) {
+	private void handleCallback(IncomingCommandRequest command) {
 		sender.answerCallback(command.callbackId());
-		String data = command.callbackData();
-		if (data == null) {
-			return;
-		}
-		if (data.startsWith(CreateTaskFromVoiceUseCase.CONFIRM_PREFIX)) {
-			uuid(data, CreateTaskFromVoiceUseCase.CONFIRM_PREFIX)
-					.ifPresent(id -> createTask.confirm(command.chatId(), command.messageId(), id));
-		}
-		else if (data.startsWith(CreateTaskFromVoiceUseCase.CANCEL_PREFIX)) {
-			uuid(data, CreateTaskFromVoiceUseCase.CANCEL_PREFIX)
-					.ifPresent(id -> createTask.cancel(command.chatId(), command.messageId(), id));
-		}
-		else if (data.startsWith(HandleReminderActionUseCase.DONE_PREFIX)) {
-			uuid(data, HandleReminderActionUseCase.DONE_PREFIX)
-					.ifPresent(id -> reminderActions.done(command.chatId(), command.messageId(), id));
-		}
-		else if (data.startsWith(HandleReminderActionUseCase.CANCEL_PREFIX)) {
-			uuid(data, HandleReminderActionUseCase.CANCEL_PREFIX)
-					.ifPresent(id -> reminderActions.cancel(command.chatId(), command.messageId(), id));
-		}
-		else if (data.startsWith(HandleReminderActionUseCase.SNOOZE_PREFIX)) {
-			uuid(data, HandleReminderActionUseCase.SNOOZE_PREFIX)
-					.ifPresent(id -> reminderActions.snooze(command.chatId(), command.messageId(), id));
-		}
+		Optional.ofNullable(command.callbackData())
+				.flatMap(data -> callbackRoutes.stream().filter(route -> route.accepts(data)).findFirst())
+				.ifPresent(route -> route.run(command));
 	}
 
-	private static Optional<UUID> uuid(String data, String prefix) {
-		try {
-			return Optional.of(UUID.fromString(data.substring(prefix.length())));
-		}
-		catch (IllegalArgumentException ex) {
-			return Optional.empty();
-		}
+	private void sendUsage(IncomingCommandRequest command) {
+		sender.sendText(command.chatId(), messages.get("usage"));
 	}
 
-	/** The leading "/command" without "@botname" or arguments, lower-cased; empty if the text is not a command. */
+	private void sendNotSupported(IncomingCommandRequest command) {
+		sender.sendText(command.chatId(), messages.get("not-supported-yet"));
+	}
+
 	private static String slashCommand(String text) {
-		String trimmed = text.strip();
-		if (!trimmed.startsWith("/")) {
-			return "";
-		}
-		int end = 0;
-		while (end < trimmed.length() && !Character.isWhitespace(trimmed.charAt(end))) {
-			end++;
-		}
-		String token = trimmed.substring(0, end);
-		int at = token.indexOf('@');
-		return (at >= 0 ? token.substring(0, at) : token).toLowerCase(Locale.ROOT);
+		return Optional.of(text.strip()).filter(trimmed -> trimmed.startsWith("/"))
+				.map(IncomingCommandService::commandWithoutBotName).orElse("");
+	}
+
+	private static String commandWithoutBotName(String trimmed) {
+		String token = trimmed.chars().takeWhile(character -> !Character.isWhitespace(character))
+				.mapToObj(character -> String.valueOf((char) character)).collect(Collectors.joining());
+		return token.split("@", 2)[0].toLowerCase(Locale.ROOT);
 	}
 }

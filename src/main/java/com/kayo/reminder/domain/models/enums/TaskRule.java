@@ -1,0 +1,10 @@
+package com.kayo.reminder.domain.models.enums;
+
+public enum TaskRule {
+	TITLE_REQUIRED,
+	TITLE_TOO_LONG,
+	URGENCY_REQUIRED,
+	DEADLINE_REQUIRED,
+	DEADLINE_NOT_IN_FUTURE,
+	START_AFTER_DEADLINE
+}

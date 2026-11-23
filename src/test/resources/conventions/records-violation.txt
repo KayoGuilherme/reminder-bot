@@ -1,0 +1,8 @@
+package com.kayo.reminder.domain.models;
+
+class Sample {
+	record Inner(int value) {
+	}
+}
+record Outer(int value) {
+}

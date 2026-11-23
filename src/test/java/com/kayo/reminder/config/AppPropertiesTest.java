@@ -82,7 +82,7 @@ class AppPropertiesTest {
 			AppProperties props = context.getBean(AppProperties.class);
 			assertThat(props.language()).isEqualTo("en");
 			assertThat(props.telegram().enabled()).isTrue();
-			AppProperties.Telegram.Retry retry = props.telegram().retry();
+			RetryProperties retry = props.telegram().retry();
 			assertThat(retry.maxAttempts()).isEqualTo(3);
 			assertThat(retry.initialBackoff()).isEqualTo(Duration.ofMillis(500));
 			assertThat(retry.maxBackoff()).isEqualTo(Duration.ofSeconds(5));
@@ -122,7 +122,7 @@ class AppPropertiesTest {
 	@Test
 	void schedulerDefaultsToEnabledEvery30Seconds() {
 		runner().run(context -> {
-			AppProperties.Scheduler scheduler = context.getBean(AppProperties.class).scheduler();
+			SchedulerProperties scheduler = context.getBean(AppProperties.class).scheduler();
 			assertThat(scheduler.enabled()).isTrue();
 			assertThat(scheduler.interval()).isEqualTo(Duration.ofSeconds(30));
 		});
@@ -131,7 +131,7 @@ class AppPropertiesTest {
 	@Test
 	void schedulerCanBeOverridden() {
 		runner("app.scheduler.interval=1m", "app.scheduler.enabled=false").run(context -> {
-			AppProperties.Scheduler scheduler = context.getBean(AppProperties.class).scheduler();
+			SchedulerProperties scheduler = context.getBean(AppProperties.class).scheduler();
 			assertThat(scheduler.enabled()).isFalse();
 			assertThat(scheduler.interval()).isEqualTo(Duration.ofMinutes(1));
 		});
@@ -148,7 +148,7 @@ class AppPropertiesTest {
 	@Test
 	void reminderDefaultsToEveryTwoMinutesUpToTenRepeats() {
 		runner().run(context -> {
-			AppProperties.Reminder reminder = context.getBean(AppProperties.class).reminder();
+			ReminderProperties reminder = context.getBean(AppProperties.class).reminder();
 			assertThat(reminder.repeatInterval()).isEqualTo(Duration.ofMinutes(2));
 			assertThat(reminder.maxRepeats()).isEqualTo(10);
 		});
@@ -157,7 +157,7 @@ class AppPropertiesTest {
 	@Test
 	void reminderCanBeOverridden() {
 		runner("APP_REMINDER_REPEAT_INTERVAL=1m", "APP_REMINDER_MAX_REPEATS=3").run(context -> {
-			AppProperties.Reminder reminder = context.getBean(AppProperties.class).reminder();
+			ReminderProperties reminder = context.getBean(AppProperties.class).reminder();
 			assertThat(reminder.repeatInterval()).isEqualTo(Duration.ofMinutes(1));
 			assertThat(reminder.maxRepeats()).isEqualTo(3);
 		});
@@ -210,7 +210,7 @@ class AppPropertiesTest {
 				assertThat(context.getBean(AppProperties.class).llm().apiKey()).isEqualTo("groq-secret"));
 		runner("LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai", "LLM_MODEL=gemini-x",
 				"LLM_API_KEY=gem-key").run(context -> {
-					AppProperties.Llm llm = context.getBean(AppProperties.class).llm();
+					LlmProperties llm = context.getBean(AppProperties.class).llm();
 					assertThat(llm.baseUrl()).isEqualTo("https://generativelanguage.googleapis.com/v1beta/openai");
 					assertThat(llm.model()).isEqualTo("gemini-x");
 					assertThat(llm.apiKey()).isEqualTo("gem-key");

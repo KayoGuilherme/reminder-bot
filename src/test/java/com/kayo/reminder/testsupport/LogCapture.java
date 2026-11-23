@@ -4,10 +4,11 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import java.util.ConcurrentModificationException;
 import java.util.List;
+import java.util.Optional;
 import org.slf4j.LoggerFactory;
 
-/** Captures what a class logs so tests can assert on it. Call {@link #close()} when done. */
 public final class LogCapture implements AutoCloseable {
 
 	private final Logger logger;
@@ -26,15 +27,10 @@ public final class LogCapture implements AutoCloseable {
 		logger.addAppender(appender);
 	}
 
-	/** Captures everything logged anywhere, at DEBUG. */
 	public static LogCapture ofRoot() {
 		return new LogCapture((Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME));
 	}
 
-	/**
-	 * The worst case the configuration allows: the root logger (and so everything of ours) at DEBUG, with the
-	 * library levels pinned in {@code application.yaml} applied, so that those pins are tested too.
-	 */
 	public static LogCapture ofRootWithConfiguredLibraryLevels() {
 		LogCapture logs = ofRoot();
 		org.springframework.beans.factory.config.YamlPropertiesFactoryBean yaml =
@@ -48,15 +44,17 @@ public final class LogCapture implements AutoCloseable {
 		return logs;
 	}
 
-	/** A snapshot; other threads (a fake server's) may still be logging, so a clash with a writer is retried. */
 	public List<ILoggingEvent> events() {
-		while (true) {
-			try {
-				return List.copyOf(appender.list);
-			}
-			catch (java.util.ConcurrentModificationException retry) {
-				Thread.onSpinWait();
-			}
+		return snapshot().orElseGet(this::events);
+	}
+
+	private Optional<List<ILoggingEvent>> snapshot() {
+		try {
+			return Optional.of(List.copyOf(appender.list));
+		}
+		catch (ConcurrentModificationException retry) {
+			Thread.onSpinWait();
+			return Optional.empty();
 		}
 	}
 
@@ -64,12 +62,10 @@ public final class LogCapture implements AutoCloseable {
 		return events().stream().filter(e -> e.getLevel() == level).toList();
 	}
 
-	/** Every formatted message plus any exception text, for "must not contain" assertions. */
 	public String allText() {
 		return allText(e -> true);
 	}
 
-	/** Like {@link #allText()} but only for events {@code accept} lets through. */
 	public String allText(java.util.function.Predicate<ILoggingEvent> accept) {
 		StringBuilder sb = new StringBuilder();
 		for (ILoggingEvent e : events()) {

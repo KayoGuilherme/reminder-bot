@@ -1,0 +1,4 @@
+package com.kayo.reminder.application.dto.response;
+
+record Sample(int value) {
+}

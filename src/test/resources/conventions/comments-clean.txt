@@ -1,0 +1,6 @@
+package com.kayo.reminder.service;
+
+class Sample {
+	String url = "http://example.com";
+	String block = "/* not a comment */";
+}

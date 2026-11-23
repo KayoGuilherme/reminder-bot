@@ -1,0 +1,6 @@
+package com.kayo.reminder.domain.repositories;
+
+import jakarta.persistence.EntityManager;
+
+class TaskRepository {
+}

@@ -1,0 +1,17 @@
+package com.kayo.reminder.service;
+
+class Sample {
+	int early(int value) {
+		if (value < 0) {
+			return 0;
+		}
+		return value;
+	}
+
+	int inLoop(int[] values) {
+		for (int value : values) {
+			return value;
+		}
+		return 0;
+	}
+}

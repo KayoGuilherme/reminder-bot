@@ -1,49 +1,39 @@
 package com.kayo.reminder.testsupport;
 
-import com.kayo.reminder.application.port.out.Button;
-import com.kayo.reminder.application.port.out.MessageSenderPort;
-import com.kayo.reminder.application.port.out.SendResult;
+import com.kayo.reminder.application.dto.response.ButtonResponse;
+import com.kayo.reminder.application.dto.response.SendResultResponse;
+import com.kayo.reminder.transport.telegram.MessageSender;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Records everything sent so tests can assert on it. */
-public class RecordingSender implements MessageSenderPort {
+public class RecordingSender implements MessageSender {
 
-	public record Text(long chatId, String text) {
-	}
-
-	public record WithButtons(long chatId, String text, List<List<Button>> buttons) {
-	}
-
-	public record Edit(long chatId, int messageId, String text) {
-	}
-
-	public final List<Text> texts = new ArrayList<>();
-	public final List<WithButtons> withButtons = new ArrayList<>();
-	public final List<Edit> edits = new ArrayList<>();
+	public final List<SentText> texts = new ArrayList<>();
+	public final List<SentButtons> withButtons = new ArrayList<>();
+	public final List<SentEdit> edits = new ArrayList<>();
 	public final List<String> answeredCallbacks = new ArrayList<>();
-	public SendResult result = SendResult.ok(1);
+	public SendResultResponse result = SendResultResponse.ok(1);
 
 	@Override
-	public SendResult sendText(long chatId, String text) {
-		texts.add(new Text(chatId, text));
+	public SendResultResponse sendText(long chatId, String text) {
+		texts.add(new SentText(chatId, text));
 		return result;
 	}
 
 	@Override
-	public SendResult sendWithButtons(long chatId, String text, List<List<Button>> buttons) {
-		withButtons.add(new WithButtons(chatId, text, buttons));
+	public SendResultResponse sendWithButtons(long chatId, String text, List<List<ButtonResponse>> buttons) {
+		withButtons.add(new SentButtons(chatId, text, buttons));
 		return result;
 	}
 
 	@Override
-	public SendResult editText(long chatId, int messageId, String text) {
-		edits.add(new Edit(chatId, messageId, text));
+	public SendResultResponse editText(long chatId, int messageId, String text) {
+		edits.add(new SentEdit(chatId, messageId, text));
 		return result;
 	}
 
 	@Override
-	public SendResult answerCallback(String callbackId) {
+	public SendResultResponse answerCallback(String callbackId) {
 		answeredCallbacks.add(callbackId);
 		return result;
 	}

@@ -1,0 +1,19 @@
+package com.kayo.reminder.service;
+
+class Sample {
+	int statement(int value) {
+		int result = 0;
+		switch (value) {
+			case 1 -> result = 1;
+			default -> result = 2;
+		}
+		return result;
+	}
+
+	int expression(int value) {
+		return switch (value) {
+			case 1 -> 1;
+			default -> 2;
+		};
+	}
+}

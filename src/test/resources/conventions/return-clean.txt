@@ -1,0 +1,18 @@
+package com.kayo.reminder.service;
+
+class Sample {
+	int parse(String text) {
+		try {
+			return Integer.parseInt(text);
+		}
+		catch (NumberFormatException failure) {
+			return 0;
+		}
+	}
+
+	java.util.function.Supplier<Integer> supplier() {
+		return () -> {
+			return 1;
+		};
+	}
+}

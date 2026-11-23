@@ -1,0 +1,6 @@
+package com.kayo.reminder.domain.repositories;
+
+import com.kayo.reminder.application.service.TaskService;
+
+class Sample {
+}

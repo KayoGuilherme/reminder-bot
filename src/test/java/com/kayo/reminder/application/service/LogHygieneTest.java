@@ -2,19 +2,23 @@ package com.kayo.reminder.application.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.kayo.reminder.application.port.in.IncomingCommand;
+import com.kayo.reminder.application.component.DraftStore;
+import com.kayo.reminder.application.component.TaskFactory;
+import com.kayo.reminder.application.dto.request.IncomingCommandRequest;
 import com.kayo.reminder.config.AppProperties;
-import com.kayo.reminder.infrastructure.http.RestClients;
-import com.kayo.reminder.infrastructure.http.SingleRetry;
-import com.kayo.reminder.infrastructure.llm.ChatCompletionsTaskParser;
-import com.kayo.reminder.infrastructure.stt.GroqTranscriptionClient;
+import com.kayo.reminder.config.LlmProperties;
+import com.kayo.reminder.config.SttProperties;
 import com.kayo.reminder.testsupport.FakeHttpServer;
-import com.kayo.reminder.testsupport.InMemoryTaskRepository;
+import com.kayo.reminder.testsupport.InMemoryTaskService;
 import com.kayo.reminder.testsupport.LogCapture;
 import com.kayo.reminder.testsupport.MutableClock;
 import com.kayo.reminder.testsupport.RecordingSender;
 import com.kayo.reminder.testsupport.TestMessages;
 import com.kayo.reminder.testsupport.TestProperties;
+import com.kayo.reminder.transport.http.RestClients;
+import com.kayo.reminder.transport.http.SingleRetry;
+import com.kayo.reminder.transport.llm.ChatCompletionsTaskParser;
+import com.kayo.reminder.transport.stt.GroqTranscriptionClient;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -23,10 +27,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-/**
- * Runs whole flows with every logger captured at DEBUG and checks that no line, message or stack trace contains
- * what the owner said, a task title, an API key or the bot token. Services are real; the outside is faked.
- */
 class LogHygieneTest {
 
 	private static final long CHAT = 100L;
@@ -41,7 +41,7 @@ class LogHygieneTest {
 	private FakeHttpServer stt;
 	private FakeHttpServer llm;
 	private final RecordingSender sender = new RecordingSender();
-	private final InMemoryTaskRepository repository = new InMemoryTaskRepository();
+	private final InMemoryTaskService repository = new InMemoryTaskService();
 	private final MutableClock clock = new MutableClock(NOW);
 	private IncomingCommandService commands;
 
@@ -51,9 +51,9 @@ class LogHygieneTest {
 		llm = new FakeHttpServer();
 		ZoneId zone = ZoneId.of("America/Fortaleza");
 		AppProperties properties = TestProperties.of(zone, "en");
-		AppProperties.Stt sttSettings = new AppProperties.Stt("pt", "m", stt.baseUrl(), Duration.ofSeconds(2),
+		SttProperties sttSettings = new SttProperties("pt", "m", stt.baseUrl(), Duration.ofSeconds(2),
 				Duration.ofSeconds(5));
-		AppProperties.Llm llmSettings = new AppProperties.Llm(llm.baseUrl(), "m", LLM_KEY, Duration.ofSeconds(2),
+		LlmProperties llmSettings = new LlmProperties(llm.baseUrl(), "m", LLM_KEY, Duration.ofSeconds(2),
 				Duration.ofSeconds(5));
 		var messages = TestMessages.of("en");
 		var create = new CreateTaskFromVoiceService(sender, fileId -> new byte[] { 1, 2, 3 },
@@ -61,7 +61,7 @@ class LogHygieneTest {
 						sttSettings.readTimeout()), GROQ_KEY, sttSettings, new SingleRetry("Transcription", Duration.ZERO, d -> { })),
 				new ChatCompletionsTaskParser(RestClients.create(llm.baseUrl(), llmSettings.connectTimeout(),
 						llmSettings.readTimeout()), llmSettings, clock, zone, new SingleRetry("Task parser", Duration.ZERO, d -> { })),
-				repository, new DraftStore(clock, Duration.ofMinutes(10)), messages, properties, clock);
+				repository, new DraftStore(clock, Duration.ofMinutes(10)), messages, properties, clock, new TaskFactory(clock));
 		commands = new IncomingCommandService(sender, messages, create,
 				new ReminderActionService(repository, sender, messages, properties, clock),
 				new ListTasksService(repository, sender, messages, properties, clock));
@@ -91,13 +91,13 @@ class LogHygieneTest {
 		stt.reply(200, "{\"text\":\"" + TRANSCRIPT + "\"}");
 		llm.reply(200, completion(PARSED));
 		try (LogCapture logs = LogCapture.ofRootWithConfiguredLibraryLevels()) {
-			commands.handle(IncomingCommand.voice(CHAT, 42, 1, "file-1", 5));
+			commands.handle(IncomingCommandRequest.voice(CHAT, 42, 1, "file-1", 5));
 			String data = sender.withButtons.get(0).buttons().get(0).get(0).callbackData();
 			UUID draft = UUID.fromString(data.substring("task:ok:".length()));
-			commands.handle(IncomingCommand.callback(CHAT, 42, 2, "cb-1", "task:ok:" + draft));
-			commands.handle(IncomingCommand.text(CHAT, 42, 3, "/tasks"));
+			commands.handle(IncomingCommandRequest.callback(CHAT, 42, 2, "cb-1", "task:ok:" + draft));
+			commands.handle(IncomingCommandRequest.text(CHAT, 42, 3, "/tasks"));
 			String done = sender.withButtons.get(1).buttons().get(0).get(0).callbackData();
-			commands.handle(IncomingCommand.callback(CHAT, 42, 4, "cb-2", done));
+			commands.handle(IncomingCommandRequest.callback(CHAT, 42, 4, "cb-2", done));
 
 			assertThat(repository.tasks).hasSize(1);
 			assertClean(logs.allText());
@@ -110,8 +110,8 @@ class LogHygieneTest {
 		stt.reply(500, echo).reply(500, echo);
 		llm.reply(502, echo).reply(502, echo);
 		try (LogCapture logs = LogCapture.ofRootWithConfiguredLibraryLevels()) {
-			commands.handle(IncomingCommand.voice(CHAT, 42, 1, "file-1", 5));
-			commands.handle(IncomingCommand.text(CHAT, 42, 2, TRANSCRIPT));
+			commands.handle(IncomingCommandRequest.voice(CHAT, 42, 1, "file-1", 5));
+			commands.handle(IncomingCommandRequest.text(CHAT, 42, 2, TRANSCRIPT));
 
 			assertThat(sender.texts).hasSize(2);
 			assertClean(logs.allText());

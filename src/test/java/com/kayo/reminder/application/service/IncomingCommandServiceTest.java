@@ -8,13 +8,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 
-import com.kayo.reminder.application.port.in.CreateTaskFromVoiceUseCase;
-import com.kayo.reminder.application.port.in.HandleReminderActionUseCase;
-import com.kayo.reminder.application.port.in.IncomingCommand;
-import com.kayo.reminder.application.port.in.ListTasksUseCase;
-import com.kayo.reminder.application.port.out.SendResult;
-import com.kayo.reminder.application.port.out.SendResult.FailureReason;
+import com.kayo.reminder.application.dto.request.IncomingCommandRequest;
+import com.kayo.reminder.application.dto.response.SendResultResponse;
+import com.kayo.reminder.domain.models.enums.SendFailureReason;
 import com.kayo.reminder.testsupport.RecordingSender;
+import com.kayo.reminder.testsupport.SentText;
 import com.kayo.reminder.testsupport.TestMessages;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -22,9 +20,9 @@ import org.junit.jupiter.api.Test;
 class IncomingCommandServiceTest {
 
 	private final RecordingSender sender = new RecordingSender();
-	private final CreateTaskFromVoiceUseCase createTask = mock(CreateTaskFromVoiceUseCase.class);
-	private final HandleReminderActionUseCase reminderActions = mock(HandleReminderActionUseCase.class);
-	private final ListTasksUseCase listTasks = mock(ListTasksUseCase.class);
+	private final CreateTaskFromVoiceService createTask = mock(CreateTaskFromVoiceService.class);
+	private final ReminderActionService reminderActions = mock(ReminderActionService.class);
+	private final ListTasksService listTasks = mock(ListTasksService.class);
 
 	private IncomingCommandService service(String languageTag) {
 		return new IncomingCommandService(sender, TestMessages.of(languageTag), createTask, reminderActions, listTasks);
@@ -38,24 +36,17 @@ class IncomingCommandServiceTest {
 		return TestMessages.text("pt-BR", key);
 	}
 
-	private record Sent(long chatId, String text) {
-	}
-
-	private java.util.List<Sent> texts() {
-		return sender.texts.stream().map(t -> new Sent(t.chatId(), t.text())).toList();
-	}
-
 	@Test
 	void startRepliesWithUsage() {
-		service("en").handle(IncomingCommand.text(10, 42, 1, "/start"));
-		assertThat(texts()).containsExactly(new Sent(10, english("usage")));
+		service("en").handle(IncomingCommandRequest.text(10, 42, 1, "/start"));
+		assertThat(sender.texts).containsExactly(new SentText(10, english("usage")));
 		verifyNoInteractions(createTask);
 	}
 
 	@Test
 	void helpRepliesWithUsage() {
-		service("en").handle(IncomingCommand.text(10, 42, 1, "/help"));
-		assertThat(texts()).containsExactly(new Sent(10, english("usage")));
+		service("en").handle(IncomingCommandRequest.text(10, 42, 1, "/help"));
+		assertThat(sender.texts).containsExactly(new SentText(10, english("usage")));
 	}
 
 	@Test
@@ -66,16 +57,16 @@ class IncomingCommandServiceTest {
 	@Test
 	void commandAddressedToBotNameOrWithArgumentsIsTreatedAsBareCommand() {
 		IncomingCommandService service = service("en");
-		service.handle(IncomingCommand.text(10, 42, 1, "/help@my_bot"));
-		service.handle(IncomingCommand.text(10, 42, 2, "/start@my_bot  some args"));
-		service.handle(IncomingCommand.text(10, 42, 3, "  /START now"));
-		assertThat(texts()).containsOnly(new Sent(10, english("usage"))).hasSize(3);
+		service.handle(IncomingCommandRequest.text(10, 42, 1, "/help@my_bot"));
+		service.handle(IncomingCommandRequest.text(10, 42, 2, "/start@my_bot  some args"));
+		service.handle(IncomingCommandRequest.text(10, 42, 3, "  /START now"));
+		assertThat(sender.texts).containsOnly(new SentText(10, english("usage"))).hasSize(3);
 		verifyNoInteractions(createTask);
 	}
 
 	@Test
 	void plainTextStartsTheTaskFlow() {
-		IncomingCommand command = IncomingCommand.text(10, 42, 1, "remind me tomorrow at 9");
+		IncomingCommandRequest command = IncomingCommandRequest.text(10, 42, 1, "remind me tomorrow at 9");
 		service("en").handle(command);
 		verify(createTask).submit(command);
 		assertThat(sender.texts).isEmpty();
@@ -83,14 +74,14 @@ class IncomingCommandServiceTest {
 
 	@Test
 	void textMentioningStartMidSentenceIsATask() {
-		IncomingCommand command = IncomingCommand.text(10, 42, 1, "please /start");
+		IncomingCommandRequest command = IncomingCommandRequest.text(10, 42, 1, "please /start");
 		service("en").handle(command);
 		verify(createTask).submit(command);
 	}
 
 	@Test
 	void voiceStartsTheTaskFlow() {
-		IncomingCommand command = IncomingCommand.voice(10, 42, 1, "file-1", 7);
+		IncomingCommandRequest command = IncomingCommandRequest.voice(10, 42, 1, "file-1", 7);
 		service("en").handle(command);
 		verify(createTask).submit(command);
 		assertThat(sender.texts).isEmpty();
@@ -98,15 +89,15 @@ class IncomingCommandServiceTest {
 
 	@Test
 	void unknownCommandGetsPlaceholder() {
-		service("en").handle(IncomingCommand.text(10, 42, 1, "/foo"));
-		assertThat(texts()).containsExactly(new Sent(10, english("not-supported-yet")));
+		service("en").handle(IncomingCommandRequest.text(10, 42, 1, "/foo"));
+		assertThat(sender.texts).containsExactly(new SentText(10, english("not-supported-yet")));
 		verifyNoInteractions(createTask);
 	}
 
 	@Test
 	void confirmButtonIsAcknowledgedAndHandedToTheFlow() {
 		UUID id = UUID.randomUUID();
-		service("en").handle(IncomingCommand.callback(10, 42, 77, "cb-1", "task:ok:" + id));
+		service("en").handle(IncomingCommandRequest.callback(10, 42, 77, "cb-1", "task:ok:" + id));
 		assertThat(sender.answeredCallbacks).containsExactly("cb-1");
 		verify(createTask).confirm(10, 77, id);
 		verifyNoMoreInteractions(createTask);
@@ -116,7 +107,7 @@ class IncomingCommandServiceTest {
 	@Test
 	void cancelButtonIsAcknowledgedAndHandedToTheFlow() {
 		UUID id = UUID.randomUUID();
-		service("en").handle(IncomingCommand.callback(10, 42, 77, "cb-2", "task:no:" + id));
+		service("en").handle(IncomingCommandRequest.callback(10, 42, 77, "cb-2", "task:no:" + id));
 		assertThat(sender.answeredCallbacks).containsExactly("cb-2");
 		verify(createTask).cancel(10, 77, id);
 	}
@@ -124,10 +115,10 @@ class IncomingCommandServiceTest {
 	@Test
 	void unknownOrMalformedButtonDataIsOnlyAcknowledged() {
 		IncomingCommandService service = service("en");
-		service.handle(IncomingCommand.callback(10, 42, 1, "cb-1", "x:1"));
-		service.handle(IncomingCommand.callback(10, 42, 1, "cb-2", "task:ok:not-a-uuid"));
-		service.handle(IncomingCommand.callback(10, 42, 1, "cb-3", "task:no:"));
-		service.handle(IncomingCommand.callback(10, 42, 1, "cb-4", null));
+		service.handle(IncomingCommandRequest.callback(10, 42, 1, "cb-1", "x:1"));
+		service.handle(IncomingCommandRequest.callback(10, 42, 1, "cb-2", "task:ok:not-a-uuid"));
+		service.handle(IncomingCommandRequest.callback(10, 42, 1, "cb-3", "task:no:"));
+		service.handle(IncomingCommandRequest.callback(10, 42, 1, "cb-4", null));
 		assertThat(sender.answeredCallbacks).containsExactly("cb-1", "cb-2", "cb-3", "cb-4");
 		assertThat(sender.texts).isEmpty();
 		verify(createTask, never()).confirm(org.mockito.ArgumentMatchers.anyLong(), any(), any());
@@ -137,7 +128,7 @@ class IncomingCommandServiceTest {
 	@Test
 	void doneButtonIsAcknowledgedAndHandedToTheReminderActions() {
 		UUID id = UUID.randomUUID();
-		service("en").handle(IncomingCommand.callback(10, 42, 77, "cb-1", "task:done:" + id));
+		service("en").handle(IncomingCommandRequest.callback(10, 42, 77, "cb-1", "task:done:" + id));
 		assertThat(sender.answeredCallbacks).containsExactly("cb-1");
 		verify(reminderActions).done(10, 77, id);
 		verifyNoMoreInteractions(reminderActions);
@@ -148,7 +139,7 @@ class IncomingCommandServiceTest {
 	@Test
 	void snoozeButtonIsAcknowledgedAndHandedToTheReminderActions() {
 		UUID id = UUID.randomUUID();
-		service("en").handle(IncomingCommand.callback(10, 42, 78, "cb-2", "task:snooze:" + id));
+		service("en").handle(IncomingCommandRequest.callback(10, 42, 78, "cb-2", "task:snooze:" + id));
 		assertThat(sender.answeredCallbacks).containsExactly("cb-2");
 		verify(reminderActions).snooze(10, 78, id);
 		verifyNoMoreInteractions(reminderActions);
@@ -157,7 +148,7 @@ class IncomingCommandServiceTest {
 	@Test
 	void cancelTaskButtonIsAcknowledgedAndHandedToTheReminderActions() {
 		UUID id = UUID.randomUUID();
-		service("en").handle(IncomingCommand.callback(10, 42, 79, "cb-3", "task:cancel:" + id));
+		service("en").handle(IncomingCommandRequest.callback(10, 42, 79, "cb-3", "task:cancel:" + id));
 		assertThat(sender.answeredCallbacks).containsExactly("cb-3");
 		verify(reminderActions).cancel(10, 79, id);
 		verifyNoMoreInteractions(reminderActions);
@@ -168,9 +159,9 @@ class IncomingCommandServiceTest {
 	@Test
 	void tasksCommandListsThePendingTasksOfTheChat() {
 		IncomingCommandService service = service("en");
-		service.handle(IncomingCommand.text(10, 42, 1, "/tasks"));
-		service.handle(IncomingCommand.text(10, 42, 2, "/TASKS@my_bot"));
-		service.handle(IncomingCommand.text(10, 42, 3, "  /tasks now"));
+		service.handle(IncomingCommandRequest.text(10, 42, 1, "/tasks"));
+		service.handle(IncomingCommandRequest.text(10, 42, 2, "/TASKS@my_bot"));
+		service.handle(IncomingCommandRequest.text(10, 42, 3, "  /tasks now"));
 		verify(listTasks, org.mockito.Mockito.times(3)).list(10);
 		verifyNoInteractions(createTask);
 		assertThat(sender.texts).isEmpty();
@@ -179,10 +170,10 @@ class IncomingCommandServiceTest {
 	@Test
 	void malformedReminderButtonDataIsOnlyAcknowledged() {
 		IncomingCommandService service = service("en");
-		service.handle(IncomingCommand.callback(10, 42, 1, "cb-1", "task:done:not-a-uuid"));
-		service.handle(IncomingCommand.callback(10, 42, 1, "cb-2", "task:snooze:"));
-		service.handle(IncomingCommand.callback(10, 42, 1, "cb-3", "task:done"));
-		service.handle(IncomingCommand.callback(10, 42, 1, "cb-4", "task:cancel:not-a-uuid"));
+		service.handle(IncomingCommandRequest.callback(10, 42, 1, "cb-1", "task:done:not-a-uuid"));
+		service.handle(IncomingCommandRequest.callback(10, 42, 1, "cb-2", "task:snooze:"));
+		service.handle(IncomingCommandRequest.callback(10, 42, 1, "cb-3", "task:done"));
+		service.handle(IncomingCommandRequest.callback(10, 42, 1, "cb-4", "task:cancel:not-a-uuid"));
 		assertThat(sender.answeredCallbacks).containsExactly("cb-1", "cb-2", "cb-3", "cb-4");
 		assertThat(sender.texts).isEmpty();
 		verifyNoInteractions(reminderActions);
@@ -191,19 +182,19 @@ class IncomingCommandServiceTest {
 	@Test
 	void repliesInPortuguese() {
 		IncomingCommandService service = service("pt-BR");
-		service.handle(IncomingCommand.text(10, 42, 1, "/start"));
-		service.handle(IncomingCommand.text(10, 42, 2, "/foo"));
-		assertThat(texts()).containsExactly(
-				new Sent(10, portuguese("usage")), new Sent(10, portuguese("not-supported-yet")));
+		service.handle(IncomingCommandRequest.text(10, 42, 1, "/start"));
+		service.handle(IncomingCommandRequest.text(10, 42, 2, "/foo"));
+		assertThat(sender.texts).containsExactly(
+				new SentText(10, portuguese("usage")), new SentText(10, portuguese("not-supported-yet")));
 		assertThat(portuguese("usage")).isNotEqualTo(english("usage"));
 	}
 
 	@Test
 	void failedSendResultDoesNotThrow() {
-		sender.result = SendResult.failed(FailureReason.TRANSIENT);
+		sender.result = SendResultResponse.failed(SendFailureReason.TRANSIENT);
 		IncomingCommandService service = service("en");
-		service.handle(IncomingCommand.text(10, 42, 1, "/start"));
-		service.handle(IncomingCommand.callback(10, 42, 1, "cb-1", "x"));
+		service.handle(IncomingCommandRequest.text(10, 42, 1, "/start"));
+		service.handle(IncomingCommandRequest.callback(10, 42, 1, "cb-1", "x"));
 		assertThat(sender.texts).hasSize(1);
 		assertThat(sender.answeredCallbacks).hasSize(1);
 	}

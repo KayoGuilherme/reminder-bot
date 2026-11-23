@@ -1,0 +1,11 @@
+package com.kayo.reminder.service;
+
+import java.util.List;
+
+class Sample {
+	void run(boolean first, List<Boolean> values) {
+		if (first) {
+			values.forEach(value -> System.out.print(value));
+		}
+	}
+}

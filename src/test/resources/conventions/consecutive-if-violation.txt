@@ -1,0 +1,12 @@
+package com.kayo.reminder.service;
+
+class Sample {
+	void run(int value) {
+		if (value < 0) {
+			throw new IllegalArgumentException();
+		}
+		if (value > 9) {
+			throw new IllegalArgumentException();
+		}
+	}
+}

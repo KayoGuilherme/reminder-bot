@@ -1,0 +1,6 @@
+package com.kayo.reminder.application.dto.response;
+
+import jakarta.persistence.Id;
+
+class Task {
+}

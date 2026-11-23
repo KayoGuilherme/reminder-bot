@@ -3,14 +3,14 @@ package com.kayo.reminder.application.service;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import ch.qos.logback.classic.Level;
-import com.kayo.reminder.application.port.out.Button;
-import com.kayo.reminder.application.port.out.SendResult;
-import com.kayo.reminder.application.port.out.SendResult.FailureReason;
-import com.kayo.reminder.domain.ReminderPolicy;
-import com.kayo.reminder.domain.Task;
-import com.kayo.reminder.domain.TaskStatus;
-import com.kayo.reminder.domain.Urgency;
-import com.kayo.reminder.testsupport.InMemoryTaskRepository;
+import com.kayo.reminder.application.component.ReminderMessageFactory;
+import com.kayo.reminder.application.dto.response.ButtonResponse;
+import com.kayo.reminder.application.dto.response.SendResultResponse;
+import com.kayo.reminder.application.dto.response.TaskResponse;
+import com.kayo.reminder.domain.models.enums.SendFailureReason;
+import com.kayo.reminder.domain.models.enums.TaskStatus;
+import com.kayo.reminder.domain.models.enums.Urgency;
+import com.kayo.reminder.testsupport.InMemoryTaskService;
 import com.kayo.reminder.testsupport.LogCapture;
 import com.kayo.reminder.testsupport.MutableClock;
 import com.kayo.reminder.testsupport.RecordingSender;
@@ -18,6 +18,7 @@ import com.kayo.reminder.testsupport.TestMessages;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,7 +29,7 @@ class SendDueRemindersServiceTest {
 	private static final Instant DEADLINE = Instant.parse("2026-11-22T15:00:00Z");
 	private static final Duration TEN = Duration.ofMinutes(10);
 
-	private final InMemoryTaskRepository repository = new InMemoryTaskRepository();
+	private final InMemoryTaskService repository = new InMemoryTaskService();
 	private final RecordingSender sender = new RecordingSender();
 	private final MutableClock clock = new MutableClock(DEADLINE.minus(TEN));
 	private SendDueRemindersService service;
@@ -39,13 +40,13 @@ class SendDueRemindersServiceTest {
 				ReminderPolicy.defaults(), clock);
 	}
 
-	private Task task(Urgency urgency) {
+	private TaskResponse task(Urgency urgency) {
 		return repository.add(7L, "Send the report", urgency, TaskStatus.PENDING, DEADLINE);
 	}
 
 	@Test
 	void sendsOneMessageToTheTasksChatAndRecordsTheStage() {
-		Task task = task(Urgency.MEDIUM);
+		TaskResponse task = task(Urgency.MEDIUM);
 
 		assertThat(service.sendDueReminders()).isEqualTo(1);
 
@@ -53,15 +54,15 @@ class SendDueRemindersServiceTest {
 		assertThat(sender.texts).isEmpty();
 		assertThat(sender.withButtons.get(0).chatId()).isEqualTo(7L);
 		assertThat(sender.withButtons.get(0).text()).isEqualTo("Send the report is due in 10 minutes. Time to start.");
-		Task stored = repository.tasks.get(task.id());
+		TaskResponse stored = repository.tasks.get(task.id());
 		assertThat(stored.lastReminderStage()).isEqualTo((short) 1);
 		assertThat(stored.lastRemindedAt()).isEqualTo(clock.instant());
 	}
 
 	@Test
 	void theStageIsRecordedOnlyAfterTheSend() {
-		Task task = task(Urgency.LOW);
-		sender.result = SendResult.failed(FailureReason.TRANSIENT);
+		TaskResponse task = task(Urgency.LOW);
+		sender.result = SendResultResponse.failed(SendFailureReason.TRANSIENT);
 
 		assertThat(service.sendDueReminders()).isZero();
 
@@ -73,11 +74,11 @@ class SendDueRemindersServiceTest {
 
 	@Test
 	void aFailedSendIsRetriedOnTheNextRunAndThenNotRepeated() {
-		Task task = task(Urgency.LOW);
-		sender.result = SendResult.failed(FailureReason.RATE_LIMITED);
+		TaskResponse task = task(Urgency.LOW);
+		sender.result = SendResultResponse.failed(SendFailureReason.RATE_LIMITED);
 		service.sendDueReminders();
 
-		sender.result = SendResult.ok(1);
+		sender.result = SendResultResponse.ok(1);
 		clock.advance(Duration.ofSeconds(30));
 		assertThat(service.sendDueReminders()).isEqualTo(1);
 		clock.advance(Duration.ofSeconds(30));
@@ -89,11 +90,11 @@ class SendDueRemindersServiceTest {
 
 	@Test
 	void oneTaskThrowingDoesNotStopTheOthers() {
-		Task broken = repository.add(1L, "Broken", Urgency.HIGH, TaskStatus.PENDING, DEADLINE.minusSeconds(60));
-		Task fine = task(Urgency.HIGH);
+		TaskResponse broken = repository.add(1L, "Broken", Urgency.HIGH, TaskStatus.PENDING, DEADLINE.minusSeconds(60));
+		TaskResponse fine = task(Urgency.HIGH);
 		RecordingSender throwingFirst = new RecordingSender() {
 			@Override
-			public SendResult sendWithButtons(long chatId, String text, List<List<Button>> buttons) {
+			public SendResultResponse sendWithButtons(long chatId, String text, List<List<ButtonResponse>> buttons) {
 				if (chatId == 1L) {
 					throw new IllegalStateException("boom");
 				}
@@ -116,7 +117,7 @@ class SendDueRemindersServiceTest {
 
 	@Test
 	void oneMessagePerTaskPerRunEvenWhenSeveralStagesAreDue() {
-		Task task = task(Urgency.HIGH);
+		TaskResponse task = task(Urgency.HIGH);
 		clock.advance(TEN.plusMinutes(1));
 
 		assertThat(service.sendDueReminders()).isEqualTo(1);
@@ -143,19 +144,19 @@ class SendDueRemindersServiceTest {
 
 	@Test
 	void aTaskThatBecameNonPendingAfterTheListWasLoadedIsSkipped() {
-		Task task = task(Urgency.HIGH);
-		InMemoryTaskRepository stale = new InMemoryTaskRepository() {
+		TaskResponse task = task(Urgency.HIGH);
+		InMemoryTaskService stale = new InMemoryTaskService() {
 			@Override
-			public List<Task> findReminderCandidates(Instant deadlineBefore) {
-				List<Task> candidates = repository.findReminderCandidates(deadlineBefore);
-				repository.tasks.put(task.id(), Task.restore(task.id(), task.chatId(), task.title(), task.urgency(),
+			public List<TaskResponse> findReminderCandidates(Instant deadlineBefore, Map<Urgency, Integer> finalStageByUrgency) {
+				List<TaskResponse> candidates = repository.findReminderCandidates(deadlineBefore, finalStageByUrgency);
+				repository.tasks.put(task.id(), new TaskResponse(task.id(), task.chatId(), task.title(), task.urgency(),
 						TaskStatus.DONE, null, task.deadlineAt(), (short) 0, null, task.createdAt(),
 						task.updatedAt()));
 				return candidates;
 			}
 
 			@Override
-			public Optional<Task> findById(UUID id) {
+			public Optional<TaskResponse> findById(UUID id) {
 				return repository.findById(id);
 			}
 		};
@@ -168,21 +169,21 @@ class SendDueRemindersServiceTest {
 
 	@Test
 	void aRecordRefusedBecauseTheTaskChangedLeavesTheStoredValuesAlone() {
-		Task task = task(Urgency.HIGH);
-		InMemoryTaskRepository racing = new InMemoryTaskRepository() {
+		TaskResponse task = task(Urgency.HIGH);
+		InMemoryTaskService racing = new InMemoryTaskService() {
 			@Override
-			public List<Task> findReminderCandidates(Instant deadlineBefore) {
-				return repository.findReminderCandidates(deadlineBefore);
+			public List<TaskResponse> findReminderCandidates(Instant deadlineBefore, Map<Urgency, Integer> finalStageByUrgency) {
+				return repository.findReminderCandidates(deadlineBefore, finalStageByUrgency);
 			}
 
 			@Override
-			public Optional<Task> findById(UUID id) {
+			public Optional<TaskResponse> findById(UUID id) {
 				return repository.findById(id);
 			}
 
 			@Override
 			public boolean markReminded(UUID id, int stage, Instant at, Instant expectedDeadline) {
-				repository.tasks.put(id, Task.restore(task.id(), task.chatId(), task.title(), task.urgency(),
+				repository.tasks.put(id, new TaskResponse(task.id(), task.chatId(), task.title(), task.urgency(),
 						TaskStatus.DONE, null, task.deadlineAt(), (short) 0, null, task.createdAt(),
 						task.updatedAt()));
 				return repository.markReminded(id, stage, at, expectedDeadline);
@@ -197,9 +198,9 @@ class SendDueRemindersServiceTest {
 		assertThat(repository.tasks.get(task.id()).lastRemindedAt()).isNull();
 	}
 
-	private Task overdueHigh(int stage, Instant remindedAt) {
-		Task task = repository.add(7L, "Send the report", Urgency.HIGH, TaskStatus.PENDING, DEADLINE);
-		Task stored = Task.restore(task.id(), task.chatId(), task.title(), task.urgency(), task.status(), null,
+	private TaskResponse overdueHigh(int stage, Instant remindedAt) {
+		TaskResponse task = repository.add(7L, "Send the report", Urgency.HIGH, TaskStatus.PENDING, DEADLINE);
+		TaskResponse stored = new TaskResponse(task.id(), task.chatId(), task.title(), task.urgency(), task.status(), null,
 				DEADLINE, (short) stage, remindedAt, task.createdAt(), remindedAt);
 		repository.tasks.put(task.id(), stored);
 		return stored;
@@ -207,17 +208,17 @@ class SendDueRemindersServiceTest {
 
 	@Test
 	void everyReminderKindCarriesTheDoneAndSnoozeButtons() {
-		Task scheduled = task(Urgency.HIGH);
+		TaskResponse scheduled = task(Urgency.HIGH);
 		service.sendDueReminders();
 		clock.advance(Duration.ofMinutes(12));
-		Task overdue = overdueHigh(3, clock.instant().minus(Duration.ofMinutes(2)));
-		Task finalOne = overdueHigh(13, clock.instant().minus(Duration.ofMinutes(2)));
+		TaskResponse overdue = overdueHigh(3, clock.instant().minus(Duration.ofMinutes(2)));
+		TaskResponse finalOne = overdueHigh(13, clock.instant().minus(Duration.ofMinutes(2)));
 		service.sendDueReminders();
 
 		assertThat(sender.withButtons).hasSize(4);
 		assertThat(sender.withButtons).allSatisfy(sent -> {
 			assertThat(sent.buttons()).hasSize(1);
-			assertThat(sent.buttons().get(0)).extracting(Button::text).containsExactly("Done \u2705", "Snooze 10 min");
+			assertThat(sent.buttons().get(0)).extracting(ButtonResponse::text).containsExactly("Done \u2705", "Snooze 10 min");
 		});
 		assertThat(sender.withButtons.get(0).buttons().get(0).get(0).callbackData())
 				.isEqualTo("task:done:" + scheduled.id());
@@ -229,7 +230,7 @@ class SendDueRemindersServiceTest {
 	@Test
 	void anOverdueRepeatIsSentOncePerRunAndOnlyOnceTheIntervalPassed() {
 		clock.advance(TEN);
-		Task task = overdueHigh(3, DEADLINE);
+		TaskResponse task = overdueHigh(3, DEADLINE);
 
 		clock.advance(Duration.ofSeconds(119));
 		assertThat(service.sendDueReminders()).isZero();
@@ -237,7 +238,7 @@ class SendDueRemindersServiceTest {
 		assertThat(service.sendDueReminders()).isEqualTo(1);
 		assertThat(service.sendDueReminders()).isZero();
 
-		Task stored = repository.tasks.get(task.id());
+		TaskResponse stored = repository.tasks.get(task.id());
 		assertThat(stored.lastReminderStage()).isEqualTo((short) 4);
 		assertThat(stored.lastRemindedAt()).isEqualTo(clock.instant());
 		assertThat(sender.withButtons).hasSize(1);
@@ -246,14 +247,14 @@ class SendDueRemindersServiceTest {
 	@Test
 	void aFailedOverdueSendIsRetriedWithTheStoredStateUnchanged() {
 		clock.advance(TEN.plusMinutes(3));
-		Task task = overdueHigh(5, DEADLINE.plus(Duration.ofMinutes(1)));
-		sender.result = SendResult.failed(FailureReason.TRANSIENT);
+		TaskResponse task = overdueHigh(5, DEADLINE.plus(Duration.ofMinutes(1)));
+		sender.result = SendResultResponse.failed(SendFailureReason.TRANSIENT);
 
 		assertThat(service.sendDueReminders()).isZero();
 
 		assertThat(repository.tasks.get(task.id()).lastReminderStage()).isEqualTo((short) 5);
 		assertThat(repository.tasks.get(task.id()).lastRemindedAt()).isEqualTo(DEADLINE.plus(Duration.ofMinutes(1)));
-		sender.result = SendResult.ok(2);
+		sender.result = SendResultResponse.ok(2);
 		clock.advance(Duration.ofSeconds(30));
 		assertThat(service.sendDueReminders()).isEqualTo(1);
 		assertThat(repository.tasks.get(task.id()).lastReminderStage()).isEqualTo((short) 6);
@@ -262,10 +263,10 @@ class SendDueRemindersServiceTest {
 	@Test
 	void aSnoozeDuringTheSendMeansTheSentStageIsNotRecorded() {
 		clock.advance(TEN.plusMinutes(10));
-		Task task = overdueHigh(5, DEADLINE.plus(Duration.ofMinutes(1)));
+		TaskResponse task = overdueHigh(5, DEADLINE.plus(Duration.ofMinutes(1)));
 		RecordingSender snoozingSender = new RecordingSender() {
 			@Override
-			public SendResult sendWithButtons(long chatId, String text, List<List<Button>> buttons) {
+			public SendResultResponse sendWithButtons(long chatId, String text, List<List<ButtonResponse>> buttons) {
 				repository.snooze(task.id(), DEADLINE, clock.instant().plus(TEN), clock.instant());
 				return super.sendWithButtons(chatId, text, buttons);
 			}
@@ -275,15 +276,15 @@ class SendDueRemindersServiceTest {
 
 		service.sendDueReminders();
 
-		Task stored = repository.tasks.get(task.id());
+		TaskResponse stored = repository.tasks.get(task.id());
 		assertThat(stored.lastReminderStage()).isZero();
 		assertThat(stored.deadlineAt()).isEqualTo(clock.instant().plus(TEN));
 	}
 
 	@Test
 	void lowAndMediumTasksAreNeverNaggedAfterTheirLastStage() {
-		Task low = task(Urgency.LOW);
-		Task medium = task(Urgency.MEDIUM);
+		TaskResponse low = task(Urgency.LOW);
+		TaskResponse medium = task(Urgency.MEDIUM);
 		service.sendDueReminders();
 		clock.advance(TEN);
 		service.sendDueReminders();

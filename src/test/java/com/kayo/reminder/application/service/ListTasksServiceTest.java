@@ -2,12 +2,10 @@ package com.kayo.reminder.application.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.kayo.reminder.application.port.in.HandleReminderActionUseCase;
-import com.kayo.reminder.application.port.in.ListTasksUseCase;
-import com.kayo.reminder.domain.Task;
-import com.kayo.reminder.domain.TaskStatus;
-import com.kayo.reminder.domain.Urgency;
-import com.kayo.reminder.testsupport.InMemoryTaskRepository;
+import com.kayo.reminder.application.dto.response.TaskResponse;
+import com.kayo.reminder.domain.models.enums.TaskStatus;
+import com.kayo.reminder.domain.models.enums.Urgency;
+import com.kayo.reminder.testsupport.InMemoryTaskService;
 import com.kayo.reminder.testsupport.MutableClock;
 import com.kayo.reminder.testsupport.RecordingSender;
 import com.kayo.reminder.testsupport.TestMessages;
@@ -24,7 +22,7 @@ class ListTasksServiceTest {
 	private static final Instant NOW = Instant.parse("2026-11-22T15:00:00Z");
 	private static final long CHAT = 7L;
 
-	private final InMemoryTaskRepository repository = new InMemoryTaskRepository();
+	private final InMemoryTaskService repository = new InMemoryTaskService();
 	private final RecordingSender sender = new RecordingSender();
 
 	private ListTasksService service(String language, ZoneId zone) {
@@ -36,7 +34,7 @@ class ListTasksServiceTest {
 		return service("en", ZoneId.of("UTC"));
 	}
 
-	private Task add(long chat, String title, Urgency urgency, TaskStatus status, Duration fromNow) {
+	private TaskResponse add(long chat, String title, Urgency urgency, TaskStatus status, Duration fromNow) {
 		return repository.add(chat, title, urgency, status, NOW.plus(fromNow));
 	}
 
@@ -116,7 +114,7 @@ class ListTasksServiceTest {
 
 	@Test
 	void everyMessageHasDoneAndCancelButtonsIdentifyingItsTask() {
-		Task task = add(CHAT, "report", Urgency.LOW, TaskStatus.PENDING, Duration.ofHours(1));
+		TaskResponse task = add(CHAT, "report", Urgency.LOW, TaskStatus.PENDING, Duration.ofHours(1));
 
 		service().list(CHAT);
 
@@ -124,10 +122,10 @@ class ListTasksServiceTest {
 		assertThat(rows).hasSize(1);
 		assertThat(rows.get(0)).hasSize(2);
 		assertThat(rows.get(0).get(0).text()).isEqualTo(text("tasks.done-button"));
-		assertThat(rows.get(0).get(0).callbackData()).isEqualTo(HandleReminderActionUseCase.DONE_PREFIX + task.id());
+		assertThat(rows.get(0).get(0).callbackData()).isEqualTo(ReminderActionService.DONE_PREFIX + task.id());
 		assertThat(rows.get(0).get(1).text()).isEqualTo(text("tasks.cancel-button"));
 		assertThat(rows.get(0).get(1).callbackData())
-				.isEqualTo(HandleReminderActionUseCase.CANCEL_PREFIX + task.id());
+				.isEqualTo(ReminderActionService.CANCEL_PREFIX + task.id());
 		assertThat(rows.get(0).get(1).callbackData().getBytes(StandardCharsets.UTF_8)).hasSizeLessThanOrEqualTo(64);
 	}
 
@@ -157,7 +155,7 @@ class ListTasksServiceTest {
 
 		service().list(CHAT);
 
-		assertThat(sender.withButtons).hasSize(ListTasksUseCase.LIMIT);
+		assertThat(sender.withButtons).hasSize(ListTasksService.LIMIT);
 		assertThat(sender.withButtons.get(0).text()).contains("task 1\n");
 		assertThat(sender.withButtons.get(19).text()).contains("task 20\n");
 		assertThat(sender.texts).extracting(t -> t.text()).containsExactly(text("tasks.more", 5L));
@@ -165,13 +163,13 @@ class ListTasksServiceTest {
 
 	@Test
 	void exactlyTheLimitHasNoMoreMessage() {
-		for (int i = 1; i <= ListTasksUseCase.LIMIT; i++) {
+		for (int i = 1; i <= ListTasksService.LIMIT; i++) {
 			add(CHAT, "task " + i, Urgency.LOW, TaskStatus.PENDING, Duration.ofMinutes(i));
 		}
 
 		service().list(CHAT);
 
-		assertThat(sender.withButtons).hasSize(ListTasksUseCase.LIMIT);
+		assertThat(sender.withButtons).hasSize(ListTasksService.LIMIT);
 		assertThat(sender.texts).isEmpty();
 	}
 

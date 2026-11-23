@@ -1,0 +1,11 @@
+package com.kayo.reminder.service;
+
+class Sample {
+	void run(boolean first, boolean second) {
+		if (first) {
+			if (second) {
+				System.out.print("x");
+			}
+		}
+	}
+}

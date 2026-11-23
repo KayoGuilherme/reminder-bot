@@ -1,0 +1,4 @@
+package com.kayo.reminder.domain.exceptions;
+
+class TaskException extends RuntimeException {
+}

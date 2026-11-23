@@ -2,12 +2,12 @@ package com.kayo.reminder.application.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.kayo.reminder.application.port.out.SendResult;
-import com.kayo.reminder.application.port.out.SendResult.FailureReason;
-import com.kayo.reminder.domain.Task;
-import com.kayo.reminder.domain.TaskStatus;
-import com.kayo.reminder.domain.Urgency;
-import com.kayo.reminder.testsupport.InMemoryTaskRepository;
+import com.kayo.reminder.application.dto.response.SendResultResponse;
+import com.kayo.reminder.application.dto.response.TaskResponse;
+import com.kayo.reminder.domain.models.enums.SendFailureReason;
+import com.kayo.reminder.domain.models.enums.TaskStatus;
+import com.kayo.reminder.domain.models.enums.Urgency;
+import com.kayo.reminder.testsupport.InMemoryTaskService;
 import com.kayo.reminder.testsupport.MutableClock;
 import com.kayo.reminder.testsupport.RecordingSender;
 import com.kayo.reminder.testsupport.TestMessages;
@@ -24,7 +24,7 @@ class ReminderActionServiceTest {
 	private static final long CHAT = 7L;
 	private static final int MESSAGE = 77;
 
-	private final InMemoryTaskRepository repository = new InMemoryTaskRepository();
+	private final InMemoryTaskService repository = new InMemoryTaskService();
 	private final RecordingSender sender = new RecordingSender();
 	private final MutableClock clock = new MutableClock(NOW);
 
@@ -41,24 +41,21 @@ class ReminderActionServiceTest {
 		return TestMessages.text("en", key);
 	}
 
-	/** A reminded task: {@code stage} is what the last reminder was and {@code deadline} when it is due. */
-	private Task task(TaskStatus status, Instant deadline, int stage) {
-		Task added = repository.add(CHAT, "Send the report", Urgency.HIGH, status, deadline);
-		Task stored = Task.restore(added.id(), CHAT, added.title(), Urgency.HIGH, status, null, deadline,
+	private TaskResponse task(TaskStatus status, Instant deadline, int stage) {
+		TaskResponse added = repository.add(CHAT, "Send the report", Urgency.HIGH, status, deadline);
+		TaskResponse stored = new TaskResponse(added.id(), CHAT, added.title(), Urgency.HIGH, status, null, deadline,
 				(short) stage, NOW, added.createdAt(), added.updatedAt());
 		repository.tasks.put(stored.id(), stored);
 		return stored;
 	}
 
-	private Task stored(Task task) {
+	private TaskResponse stored(TaskResponse task) {
 		return repository.tasks.get(task.id());
 	}
 
-	// --- Done ------------------------------------------------------------------------------------------------
-
 	@Test
 	void doneMarksThePendingTaskDoneAndEditsTheMessageIntoAConfirmation() {
-		Task task = task(TaskStatus.PENDING, NOW, 5);
+		TaskResponse task = task(TaskStatus.PENDING, NOW, 5);
 
 		service().done(CHAT, MESSAGE, task.id());
 
@@ -72,7 +69,7 @@ class ReminderActionServiceTest {
 
 	@Test
 	void doneTwiceLeavesItDoneAndRepliesPolitely() {
-		Task task = task(TaskStatus.PENDING, NOW, 5);
+		TaskResponse task = task(TaskStatus.PENDING, NOW, 5);
 		ReminderActionService service = service();
 		service.done(CHAT, MESSAGE, task.id());
 
@@ -85,7 +82,7 @@ class ReminderActionServiceTest {
 
 	@Test
 	void doneOnACanceledTaskChangesNothingAndSaysItIsNotActive() {
-		Task task = task(TaskStatus.CANCELED, NOW, 1);
+		TaskResponse task = task(TaskStatus.CANCELED, NOW, 1);
 
 		service().done(CHAT, MESSAGE, task.id());
 
@@ -104,7 +101,7 @@ class ReminderActionServiceTest {
 
 	@Test
 	void aTaskOfAnotherChatIsAnsweredLikeAMissingOneAndLeftAlone() {
-		Task task = task(TaskStatus.PENDING, NOW, 1);
+		TaskResponse task = task(TaskStatus.PENDING, NOW, 1);
 
 		service().done(999L, MESSAGE, task.id());
 		service().snooze(999L, MESSAGE, task.id());
@@ -119,8 +116,8 @@ class ReminderActionServiceTest {
 
 	@Test
 	void whenTheEditFailsTheConfirmationIsSentAsANewMessageAndDoneIsNotRepeated() {
-		Task task = task(TaskStatus.PENDING, NOW, 1);
-		sender.result = SendResult.failed(FailureReason.REJECTED);
+		TaskResponse task = task(TaskStatus.PENDING, NOW, 1);
+		sender.result = SendResultResponse.failed(SendFailureReason.REJECTED);
 
 		service().done(CHAT, MESSAGE, task.id());
 
@@ -131,7 +128,7 @@ class ReminderActionServiceTest {
 
 	@Test
 	void withoutAMessageIdTheConfirmationIsANewMessage() {
-		Task task = task(TaskStatus.PENDING, NOW, 1);
+		TaskResponse task = task(TaskStatus.PENDING, NOW, 1);
 
 		service().done(CHAT, null, task.id());
 
@@ -139,11 +136,9 @@ class ReminderActionServiceTest {
 		assertThat(sender.texts).hasSize(1);
 	}
 
-	// --- Cancel ----------------------------------------------------------------------------------------------
-
 	@Test
 	void cancelMarksThePendingTaskCanceledAndEditsTheMessageIntoAConfirmation() {
-		Task task = task(TaskStatus.PENDING, NOW, 5);
+		TaskResponse task = task(TaskStatus.PENDING, NOW, 5);
 
 		service().cancel(CHAT, MESSAGE, task.id());
 
@@ -157,7 +152,7 @@ class ReminderActionServiceTest {
 
 	@Test
 	void cancelTwiceLeavesItCanceledAndRepliesPolitely() {
-		Task task = task(TaskStatus.PENDING, NOW, 5);
+		TaskResponse task = task(TaskStatus.PENDING, NOW, 5);
 		ReminderActionService service = service();
 		service.cancel(CHAT, MESSAGE, task.id());
 
@@ -170,7 +165,7 @@ class ReminderActionServiceTest {
 
 	@Test
 	void cancelOnADoneTaskChangesNothingAndSaysItIsNotActive() {
-		Task task = task(TaskStatus.DONE, NOW, 1);
+		TaskResponse task = task(TaskStatus.DONE, NOW, 1);
 
 		service().cancel(CHAT, MESSAGE, task.id());
 
@@ -181,7 +176,7 @@ class ReminderActionServiceTest {
 
 	@Test
 	void cancelOnAnUnknownTaskOrAnotherChatsTaskGetsTheSameReplyAndChangesNothing() {
-		Task task = task(TaskStatus.PENDING, NOW, 1);
+		TaskResponse task = task(TaskStatus.PENDING, NOW, 1);
 
 		service().cancel(CHAT, MESSAGE, UUID.randomUUID());
 		service().cancel(999L, MESSAGE, task.id());
@@ -194,8 +189,8 @@ class ReminderActionServiceTest {
 
 	@Test
 	void whenTheEditFailsTheCancelConfirmationIsANewMessageAndCancelIsNotRepeated() {
-		Task task = task(TaskStatus.PENDING, NOW, 1);
-		sender.result = SendResult.failed(FailureReason.REJECTED);
+		TaskResponse task = task(TaskStatus.PENDING, NOW, 1);
+		sender.result = SendResultResponse.failed(SendFailureReason.REJECTED);
 
 		service().cancel(CHAT, MESSAGE, task.id());
 
@@ -206,32 +201,30 @@ class ReminderActionServiceTest {
 
 	@Test
 	void aCanceledTaskIsNoLongerAReminderCandidate() {
-		Task task = task(TaskStatus.PENDING, NOW.plus(Duration.ofMinutes(5)), 0);
+		TaskResponse task = task(TaskStatus.PENDING, NOW.plus(Duration.ofMinutes(5)), 0);
 
 		service().cancel(CHAT, MESSAGE, task.id());
 
-		assertThat(repository.findReminderCandidates(NOW.plus(Duration.ofMinutes(10)))).isEmpty();
+		assertThat(repository.findReminderCandidates(NOW.plus(Duration.ofMinutes(10)), ReminderPolicy.defaults().finalStages())).isEmpty();
 	}
 
 	@Test
 	void theCancelButtonDataFitsTelegramsLimit() {
-		String data = com.kayo.reminder.application.port.in.HandleReminderActionUseCase.CANCEL_PREFIX
+		String data = com.kayo.reminder.application.service.ReminderActionService.CANCEL_PREFIX
 				+ UUID.randomUUID();
 		assertThat(data.getBytes(java.nio.charset.StandardCharsets.UTF_8)).hasSizeLessThanOrEqualTo(64);
 		assertThat(data).doesNotStartWith(
-				com.kayo.reminder.application.port.in.CreateTaskFromVoiceUseCase.CANCEL_PREFIX);
+				com.kayo.reminder.application.service.CreateTaskFromVoiceService.CANCEL_PREFIX);
 	}
-
-	// --- Snooze ----------------------------------------------------------------------------------------------
 
 	@Test
 	void snoozeBeforeTheDeadlineAddsTenMinutesToTheDeadlineAndResetsTheStage() {
 		Instant deadline = NOW.plus(Duration.ofMinutes(4));
-		Task task = task(TaskStatus.PENDING, deadline, 1);
+		TaskResponse task = task(TaskStatus.PENDING, deadline, 1);
 
 		service().snooze(CHAT, MESSAGE, task.id());
 
-		Task after = stored(task);
+		TaskResponse after = stored(task);
 		assertThat(after.deadlineAt()).isEqualTo(NOW.plus(Duration.ofMinutes(14)));
 		assertThat(after.lastReminderStage()).isZero();
 		assertThat(after.status()).isEqualTo(TaskStatus.PENDING);
@@ -244,7 +237,7 @@ class ReminderActionServiceTest {
 
 	@Test
 	void snoozeAfterTheDeadlineCountsFromNow() {
-		Task task = task(TaskStatus.PENDING, NOW.minus(Duration.ofMinutes(20)), 6);
+		TaskResponse task = task(TaskStatus.PENDING, NOW.minus(Duration.ofMinutes(20)), 6);
 
 		service().snooze(CHAT, MESSAGE, task.id());
 
@@ -254,7 +247,7 @@ class ReminderActionServiceTest {
 
 	@Test
 	void snoozeTwiceDoesNotMoveTheDeadlineASecondTime() {
-		Task task = task(TaskStatus.PENDING, NOW.minus(Duration.ofMinutes(20)), 6);
+		TaskResponse task = task(TaskStatus.PENDING, NOW.minus(Duration.ofMinutes(20)), 6);
 		ReminderActionService service = service();
 		service.snooze(CHAT, MESSAGE, task.id());
 		Instant afterFirst = stored(task).deadlineAt();
@@ -268,8 +261,8 @@ class ReminderActionServiceTest {
 
 	@Test
 	void snoozeOnFinishedOrUnknownTasksChangesNothingAndRepliesPolitely() {
-		Task done = task(TaskStatus.DONE, NOW, 1);
-		Task canceled = task(TaskStatus.CANCELED, NOW, 1);
+		TaskResponse done = task(TaskStatus.DONE, NOW, 1);
+		TaskResponse canceled = task(TaskStatus.CANCELED, NOW, 1);
 		ReminderActionService service = service();
 
 		service.snooze(CHAT, MESSAGE, done.id());
@@ -285,8 +278,8 @@ class ReminderActionServiceTest {
 
 	@Test
 	void snoozeFallsBackToANewMessageWhenTheEditFails() {
-		Task task = task(TaskStatus.PENDING, NOW, 2);
-		sender.result = SendResult.failed(FailureReason.TRANSIENT);
+		TaskResponse task = task(TaskStatus.PENDING, NOW, 2);
+		sender.result = SendResultResponse.failed(SendFailureReason.TRANSIENT);
 
 		service().snooze(CHAT, MESSAGE, task.id());
 
@@ -297,7 +290,7 @@ class ReminderActionServiceTest {
 
 	@Test
 	void textsAreInThePortugueseWhenConfigured() {
-		Task task = task(TaskStatus.PENDING, NOW, 1);
+		TaskResponse task = task(TaskStatus.PENDING, NOW, 1);
 
 		service("pt-BR").snooze(CHAT, MESSAGE, task.id());
 		service("pt-BR").done(CHAT, MESSAGE, task.id());
@@ -308,7 +301,7 @@ class ReminderActionServiceTest {
 
 	@Test
 	void cancelTextsAreInThePortugueseWhenConfigured() {
-		Task task = task(TaskStatus.PENDING, NOW, 1);
+		TaskResponse task = task(TaskStatus.PENDING, NOW, 1);
 
 		service("pt-BR").cancel(CHAT, MESSAGE, task.id());
 		service("pt-BR").cancel(CHAT, MESSAGE, task.id());

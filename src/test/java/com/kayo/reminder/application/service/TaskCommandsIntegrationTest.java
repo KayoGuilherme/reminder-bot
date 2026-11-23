@@ -4,12 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 import com.kayo.reminder.AbstractIntegrationTest;
-import com.kayo.reminder.application.port.in.CreateTaskFromVoiceUseCase;
-import com.kayo.reminder.application.port.in.IncomingCommand;
-import com.kayo.reminder.application.port.out.TaskRepository;
-import com.kayo.reminder.domain.ReminderPolicy;
-import com.kayo.reminder.domain.TaskStatus;
-import com.kayo.reminder.domain.Urgency;
+import com.kayo.reminder.application.component.ReminderMessageFactory;
+import com.kayo.reminder.application.dto.request.IncomingCommandRequest;
+import com.kayo.reminder.domain.models.enums.TaskStatus;
 import com.kayo.reminder.testsupport.MutableClock;
 import com.kayo.reminder.testsupport.RecordingSender;
 import com.kayo.reminder.testsupport.TestMessages;
@@ -23,14 +20,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
-/** /tasks, Done and Cancel from the list, and the reminder job, against a real PostgreSQL. */
 class TaskCommandsIntegrationTest extends AbstractIntegrationTest {
 
 	private static final long CHAT = 4242L;
 	private static final Instant NOW = Instant.parse("2026-11-22T13:00:00Z");
 
 	@Autowired
-	TaskRepository repository;
+	TaskService repository;
 
 	private final RecordingSender sender = new RecordingSender();
 	private MutableClock clock;
@@ -43,7 +39,7 @@ class TaskCommandsIntegrationTest extends AbstractIntegrationTest {
 		clock = new MutableClock(NOW);
 		var properties = TestProperties.of(ZoneId.of("America/Fortaleza"), "en");
 		var messages = TestMessages.of("en");
-		commands = new IncomingCommandService(sender, messages, mock(CreateTaskFromVoiceUseCase.class),
+		commands = new IncomingCommandService(sender, messages, mock(CreateTaskFromVoiceService.class),
 				new ReminderActionService(repository, sender, messages, properties, clock),
 				new ListTasksService(repository, sender, messages, properties, clock));
 		reminders = new SendDueRemindersService(repository, sender, new ReminderMessageFactory(messages),
@@ -62,7 +58,7 @@ class TaskCommandsIntegrationTest extends AbstractIntegrationTest {
 	}
 
 	private void press(int messageId, String data) {
-		commands.handle(IncomingCommand.callback(CHAT, 42, messageId, "cb-" + messageId, data));
+		commands.handle(IncomingCommandRequest.callback(CHAT, 42, messageId, "cb-" + messageId, data));
 	}
 
 	@Test
@@ -72,7 +68,7 @@ class TaskCommandsIntegrationTest extends AbstractIntegrationTest {
 		UUID kept = insert("third", TaskStatus.PENDING, Duration.ofMinutes(30));
 		insert("old", TaskStatus.DONE, Duration.ofMinutes(1));
 
-		commands.handle(IncomingCommand.text(CHAT, 42, 1, "/tasks"));
+		commands.handle(IncomingCommandRequest.text(CHAT, 42, 1, "/tasks"));
 
 		assertThat(sender.withButtons).hasSize(3);
 		assertThat(sender.withButtons).extracting(m -> m.text().lines().findFirst().orElseThrow())
@@ -101,7 +97,7 @@ class TaskCommandsIntegrationTest extends AbstractIntegrationTest {
 
 		sender.withButtons.clear();
 		sender.texts.clear();
-		commands.handle(IncomingCommand.text(CHAT, 42, 2, "/tasks"));
+		commands.handle(IncomingCommandRequest.text(CHAT, 42, 2, "/tasks"));
 		assertThat(sender.withButtons).hasSize(1);
 		assertThat(sender.withButtons.get(0).text()).contains("third");
 	}
@@ -111,7 +107,7 @@ class TaskCommandsIntegrationTest extends AbstractIntegrationTest {
 		insert("done", TaskStatus.DONE, Duration.ofMinutes(5));
 		insert("canceled", TaskStatus.CANCELED, Duration.ofMinutes(5));
 
-		commands.handle(IncomingCommand.text(CHAT, 42, 1, "/tasks"));
+		commands.handle(IncomingCommandRequest.text(CHAT, 42, 1, "/tasks"));
 
 		assertThat(sender.texts).extracting(t -> t.text()).containsExactly(TestMessages.text("en", "tasks.empty"));
 		assertThat(sender.withButtons).isEmpty();
