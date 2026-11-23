@@ -77,6 +77,20 @@ class MessagesTest {
 	}
 
 	@Test
+	void forLanguageSwitchesToOneOfTheSupportedLanguagesOnly() {
+		runner("APP_LANGUAGE=en").run(context -> {
+			Messages messages = context.getBean(Messages.class);
+			assertThat(messages.forLanguage("pt-BR").get("not-supported-yet")).isEqualTo("Ainda não é suportado.");
+			assertThat(messages.forLanguage("en")).isSameAs(messages);
+			assertThat(messages.forLanguage(null)).isSameAs(messages);
+			assertThat(messages.forLanguage("fr")).isSameAs(messages);
+		});
+		runner("APP_LANGUAGE=pt-BR").run(context ->
+				assertThat(context.getBean(Messages.class).forLanguage("en").get("not-supported-yet"))
+						.isEqualTo("Not supported yet."));
+	}
+
+	@Test
 	void bundlesDefineTheSameKeys() throws IOException {
 		Properties english = load("/messages.properties");
 		Properties portuguese = load("/messages_pt_BR.properties");

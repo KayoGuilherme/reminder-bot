@@ -96,6 +96,20 @@ class ParsedTaskValidatorTest {
 				.hasMessageNotContaining("Pay rent");
 	}
 
+	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.CsvSource(value = { "pt,pt-BR", "pt-BR,pt-BR", "PT,pt-BR", "en,en", "en-US,en", "es,", "xx," })
+	void theLanguageIsNormalizedToOneOfTheSupportedOnesOrAbsent(String answered, String expected) {
+		assertThat(validator.validate("{\"title\":\"x\",\"language\":\"" + answered + "\"}").language())
+				.isEqualTo(expected);
+	}
+
+	@Test
+	void aMissingOrNonTextLanguageIsAbsent() {
+		assertThat(validator.validate("{\"title\":\"x\"}").language()).isNull();
+		assertThat(validator.validate("{\"title\":\"x\",\"language\":null}").language()).isNull();
+		assertThat(validator.validate("{\"title\":\"x\",\"language\":5}").language()).isNull();
+	}
+
 	@Test
 	void titleOfExactlyMaxLengthIsAccepted() {
 		assertThat(validator.validate("{\"title\":\"" + "x".repeat(500) + "\"}").title()).hasSize(500);

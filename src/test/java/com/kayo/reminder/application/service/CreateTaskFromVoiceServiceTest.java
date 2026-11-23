@@ -285,6 +285,73 @@ class CreateTaskFromVoiceServiceTest {
 				.contains("Prazo: 22/11/2026 18:00").endsWith("Eu aviso você quando o prazo estiver chegando.");
 	}
 
+	// --- the language of the reply follows the language of the message ------------------------------------------
+
+	private void parsedAs(String language) {
+		when(parser.parse(anyString())).thenReturn(new ParsedTask(TITLE, Urgency.HIGH, null, SIX_PM, language));
+	}
+
+	@Test
+	void anEnglishMessageIsAnsweredInEnglishEvenWhenTheConfiguredLanguageIsPortuguese() {
+		service = service("pt-BR", 60);
+		parsedAs("en");
+		UUID id = draftFromVoice();
+		RecordingSender.WithButtons asked = sender.withButtons.get(0);
+		service.confirm(CHAT, MESSAGE, id);
+
+		assertThat(asked.text()).startsWith(en("task.confirm-header")).contains("Urgency: ").contains("2026-11-22 18:00");
+		assertThat(asked.buttons().get(0)).extracting(Button::text).containsExactly("Confirm", "Cancel");
+		assertThat(sender.edits.get(0).text()).startsWith("Task saved").contains("Due: 2026-11-22 18:00");
+	}
+
+	@Test
+	void aPortugueseMessageIsAnsweredInPortugueseEvenWhenTheConfiguredLanguageIsEnglish() {
+		parsedAs("pt-BR");
+		UUID id = draftFromVoice();
+		RecordingSender.WithButtons asked = sender.withButtons.get(0);
+		service.confirm(CHAT, MESSAGE, id);
+
+		assertThat(asked.text()).startsWith("Está certo?").contains("Urgência: Alta").contains("Prazo: 22/11/2026 18:00");
+		assertThat(asked.buttons().get(0)).extracting(Button::text).containsExactly("Confirmar", "Cancelar");
+		assertThat(sender.edits.get(0).text()).startsWith("Tarefa salva").endsWith("estiver chegando.");
+	}
+
+	@Test
+	void cancelingAPortugueseDraftAnswersInPortuguese() {
+		parsedAs("pt-BR");
+		UUID id = draftFromVoice();
+		service.cancel(CHAT, MESSAGE, id);
+
+		assertThat(sender.edits.get(0).text()).startsWith("Tarefa cancelada");
+	}
+
+	@Test
+	void aMessageWithNoKnownLanguageUsesTheConfiguredOne() {
+		service = service("pt-BR", 60);
+		parsedAs(null);
+		draftFromVoice();
+		assertThat(sender.withButtons.get(0).text()).startsWith("Está certo?");
+	}
+
+	@Test
+	void missingOrPastDeadlinesAreAnsweredInTheMessagesLanguage() {
+		when(parser.parse(anyString())).thenReturn(new ParsedTask(TITLE, Urgency.HIGH, null, null, "pt-BR"));
+		service.submit(text("comprar leite"));
+		when(parser.parse(anyString())).thenReturn(new ParsedTask(TITLE, Urgency.HIGH, null, NOW.minusSeconds(60), "pt-BR"));
+		service.submit(text("enviar às 8h"));
+
+		assertThat(sender.texts).extracting(RecordingSender.Text::text).containsExactly(
+				TestMessages.text("pt-BR", "task.deadline-missing"), TestMessages.text("pt-BR", "task.deadline-past"));
+	}
+
+	@Test
+	void failuresBeforeTheLanguageIsKnownUseTheConfiguredLanguage() {
+		service = service("pt-BR", 60);
+		when(transcription.transcribe(any())).thenThrow(new ExternalServiceException(Kind.UNAVAILABLE, "Transcription"));
+		service.submit(voice(7));
+		assertThat(sender.texts.get(0).text()).isEqualTo(TestMessages.text("pt-BR", "task.audio-failed"));
+	}
+
 	@Test
 	void inEnglishTheDateKeepsTheIsoFormat() {
 		UUID id = draftFromVoice();

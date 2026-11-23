@@ -65,7 +65,7 @@ Buttons are always answered. Pressing one twice, on an older message, or for a t
 - **Telegram errors:** if Telegram answers 429 the bot waits the requested `retry_after` (up to 30 s); network errors and 5xx are retried up to 3 attempts with backoff. After that the failure is logged and the bot carries on. An error while handling one update is logged and never stops polling.
 - **Startup check:** right after starting, the bot asks Telegram which bot the token belongs to. A rejected token is logged as an `ERROR` naming `TELEGRAM_BOT_TOKEN`; an unreachable Telegram is only a `WARN`. The app keeps running either way. See [Troubleshooting](#troubleshooting).
 - **Graceful stop:** on `docker stop` / `docker compose stop` the bot lets the reminder run in progress finish (up to `APP_SHUTDOWN_TIMEOUT`, 30 s) before exiting. Compose allows 45 s before killing the container.
-- **Language:** messages come from `messages.properties` (English) and `messages_pt_BR.properties`, chosen by `APP_LANGUAGE`. What you say can be in either language regardless.
+- **Language:** the bot answers a voice note or text **in the language you used** (Portuguese or English): the confirmation, the buttons, and the saved/canceled messages. Anything not tied to a task message (`/start`, `/tasks`, reminders, errors before the message was understood) uses `APP_LANGUAGE`. Texts are in `messages.properties` (English) and `messages_pt_BR.properties`.
 - **Privacy:** voice notes are sent to Groq for transcription and the transcribed text to the LLM provider. Audio, transcripts, task text and API keys are **never written to the logs** at any level; logs contain only ids, counts, durations, failure kinds and HTTP status codes. Every log line of one Telegram update or scheduled run carries the same short correlation id (the `[abc12345]` after the level), so one message can be followed through the log; lines outside an update show `[-]`.
 - **Only health and info endpoints** are exposed (`/actuator/health` with liveness and readiness probes, `/actuator/info`).
 
@@ -89,8 +89,8 @@ Everything is configured with environment variables (a `.env` file next to `dock
 | Variable | Default | Description |
 | --- | --- | --- |
 | `APP_TIMEZONE` | `America/Fortaleza` | Timezone for every time shown to you and for the 03:00 cleanup. Internally everything is UTC. |
-| `APP_LANGUAGE` | `en` | Language of the bot's messages: `en` or `pt-BR`. With `pt-BR` the messages are in Portuguese and dates are day first (`22/11/2026 18:00`); with `en` they are `2026-11-22 18:00`. |
-| `APP_STT_LANGUAGE` | `pt` | Language spoken in voice notes (Whisper language code) |
+| `APP_LANGUAGE` | `en` | Default language of the bot's messages: `en` or `pt-BR`. It is used for everything that does not come from a task message (`/start`, `/tasks`, reminders, errors before the message was understood). Replies to a task message follow the language of that message. With Portuguese, dates are day first (`22/11/2026 18:00`); with English they are `2026-11-22 18:00`. |
+| `APP_STT_LANGUAGE` | empty (auto-detect) | Language spoken in voice notes (Whisper language code such as `pt`). Empty lets Whisper detect it, so you can speak Portuguese or English; set a code to force one language if detection gets short notes wrong. |
 | `LLM_BASE_URL` / `LLM_MODEL` / `LLM_API_KEY` | Groq, `openai/gpt-oss-20b`, `GROQ_API_KEY` | Any OpenAI-compatible chat-completions provider that parses tasks. For Gemini: `LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai`, a Gemini `LLM_MODEL` and `LLM_API_KEY`. |
 | `APP_VOICE_MAX_SECONDS` | `60` | Longest accepted voice note |
 | `APP_DRAFT_TTL` | `10m` | How long an unconfirmed task stays valid |

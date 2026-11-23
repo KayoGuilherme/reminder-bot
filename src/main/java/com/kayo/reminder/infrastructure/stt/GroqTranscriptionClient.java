@@ -57,7 +57,9 @@ public class GroqTranscriptionClient implements TranscriptionPort {
 			}
 		}, fileHeaders));
 		form.add("model", settings.model());
-		form.add("language", settings.language());
+		if (settings.language() != null && !settings.language().isBlank()) {
+			form.add("language", settings.language());
+		}
 		form.add("response_format", "json");
 		form.add("temperature", "0");
 		return client.post().uri("/audio/transcriptions")

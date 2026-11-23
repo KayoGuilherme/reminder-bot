@@ -68,9 +68,12 @@ public record AppProperties(
 		}
 	}
 
-	/** Speech-to-text (Groq Whisper, OpenAI-compatible); authenticated with {@link Groq#apiKey()}. */
+	/**
+	 * Speech-to-text (Groq Whisper, OpenAI-compatible); authenticated with {@link Groq#apiKey()}. A blank
+	 * {@code language} (the default) lets Whisper detect the spoken language; a code such as {@code pt} forces it.
+	 */
 	public record Stt(
-			@DefaultValue("pt") @NotBlank String language,
+			@DefaultValue("") String language,
 			@DefaultValue("whisper-large-v3-turbo") @NotBlank String model,
 			@DefaultValue("https://api.groq.com/openai/v1") @NotBlank String baseUrl,
 			@DefaultValue("5s") @NotNull @DurationMin(nanos = 1) Duration connectTimeout,

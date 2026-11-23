@@ -55,7 +55,7 @@ class ParsedTaskValidator {
 		if (start != null && deadline != null && start.isAfter(deadline)) {
 			start = null;
 		}
-		return new ParsedTask(title, urgency(text(root, "urgency")), start, deadline);
+		return new ParsedTask(title, urgency(text(root, "urgency")), start, deadline, language(text(root, "language")));
 	}
 
 	/** Removes a markdown code fence (with or without a language tag) around the JSON. */
@@ -75,6 +75,18 @@ class ParsedTaskValidator {
 	private static String text(JsonNode root, String field) {
 		JsonNode node = root.get(field);
 		return node != null && node.isString() ? node.asString() : null;
+	}
+
+	/** Only the two supported languages are kept; anything else is absent and the configured language is used. */
+	private static String language(String value) {
+		if (value == null) {
+			return null;
+		}
+		String tag = value.strip().toLowerCase(Locale.ROOT);
+		if (tag.startsWith("pt")) {
+			return "pt-BR";
+		}
+		return tag.startsWith("en") ? "en" : null;
 	}
 
 	private static Urgency urgency(String value) {

@@ -3,7 +3,8 @@ spring:
     name: bot
   messages:
     basename: messages
-    # Language comes only from app.language, never from the host locale.
+    # The default language comes only from app.language, never from the host locale. Replies to a task message
+    # follow the language the message was written in (Portuguese or English).
     fallback-to-system-locale: false
   datasource:
     url: ${DB_URL:}
@@ -47,7 +48,7 @@ app:
   gemini:
     api-key: ${GEMINI_API_KEY:}
   stt:
-    language: ${APP_STT_LANGUAGE:pt}
+    language: ${APP_STT_LANGUAGE:}
     model: whisper-large-v3-turbo
     base-url: https://api.groq.com/openai/v1
     connect-timeout: 5s

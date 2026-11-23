@@ -32,9 +32,10 @@ class TaskParserPrompt {
 				The current date and time is %s.
 
 				Answer with ONLY a JSON object, no explanation and no markdown, with exactly these fields:
-				{"title": string, "urgency": "LOW" | "MEDIUM" | "HIGH" | null, "startAt": string | null, "deadlineAt": string | null}
+				{"title": string, "urgency": "LOW" | "MEDIUM" | "HIGH" | null, "startAt": string | null, "deadlineAt": string | null, "language": "pt" | "en" | null}
 
 				Rules:
+				- language: the language the message is written in: "pt" for Portuguese, "en" for English, null for anything else.
 				- title: a short description of what has to be done, in the language of the message, without the time and urgency words.
 				- deadlineAt: when the task must be done, as ISO-8601 with the UTC offset of the current time, for example 2026-11-22T18:00:00-03:00.
 				  "até as 18h", "by 6pm" mean that time TODAY. "amanhã às 9h" / "tomorrow at 9" mean that time on the next day.

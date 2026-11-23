@@ -36,10 +36,15 @@ class DraftStore {
 
 	Draft create(long chatId, String title, Urgency urgency, boolean urgencyAssumed, Instant startAt,
 			Instant deadlineAt) {
+		return create(chatId, title, urgency, urgencyAssumed, startAt, deadlineAt, null);
+	}
+
+	Draft create(long chatId, String title, Urgency urgency, boolean urgencyAssumed, Instant startAt,
+			Instant deadlineAt, String language) {
 		Instant now = clock.instant();
 		drafts.values().removeIf(draft -> !now.isBefore(draft.expiresAt()));
 		Draft draft = new Draft(UUID.randomUUID(), chatId, title, urgency, urgencyAssumed, startAt, deadlineAt,
-				now.plus(ttl));
+				now.plus(ttl), language);
 		drafts.put(draft.id(), draft);
 		return draft;
 	}

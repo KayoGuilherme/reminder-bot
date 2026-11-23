@@ -187,7 +187,7 @@ class AppPropertiesTest {
 	void voiceTaskSettingsDefaults() {
 		runner().run(context -> {
 			AppProperties props = context.getBean(AppProperties.class);
-			assertThat(props.stt().language()).isEqualTo("pt");
+			assertThat(props.stt().language()).isEmpty();
 			assertThat(props.stt().model()).isEqualTo("whisper-large-v3-turbo");
 			assertThat(props.stt().connectTimeout()).isEqualTo(Duration.ofSeconds(5));
 			assertThat(props.stt().readTimeout()).isEqualTo(Duration.ofSeconds(30));

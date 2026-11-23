@@ -62,6 +62,13 @@ class GroqTranscriptionClientTest {
 	}
 
 	@Test
+	void withoutAConfiguredLanguageWhisperDetectsIt() {
+		server.reply(200, "{\"text\":\"hello\"}");
+		client("", Duration.ofSeconds(5)).transcribe(AUDIO);
+		assertThat(server.requests().get(0).bodyText()).doesNotContain("name=\"language\"");
+	}
+
+	@Test
 	void languageCanBeOverridden() {
 		server.reply(200, "{\"text\":\"hello\"}");
 		client("en", Duration.ofSeconds(5)).transcribe(AUDIO);

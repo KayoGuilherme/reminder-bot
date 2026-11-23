@@ -41,7 +41,7 @@ public class CreateTaskFromVoiceService implements CreateTaskFromVoiceUseCase {
 	private final TaskRepository tasks;
 	private final DraftStore drafts;
 	private final Messages messages;
-	private final TaskSummaryFormatter summaries;
+	private final java.time.ZoneId zone;
 	private final int maxVoiceSeconds;
 	private final Clock clock;
 
@@ -55,7 +55,7 @@ public class CreateTaskFromVoiceService implements CreateTaskFromVoiceUseCase {
 		this.tasks = tasks;
 		this.drafts = drafts;
 		this.messages = messages;
-		this.summaries = new TaskSummaryFormatter(messages, properties.timezone());
+		this.zone = properties.timezone();
 		this.maxVoiceSeconds = properties.voice().maxSeconds();
 		this.clock = clock;
 	}
@@ -77,22 +77,24 @@ public class CreateTaskFromVoiceService implements CreateTaskFromVoiceUseCase {
 					: "task.parse-failed"));
 			return;
 		}
+		// From here on the owner is answered in the language the message was written in.
+		Messages texts = messages.forLanguage(parsed.language());
 		if (parsed.deadlineAt() == null) {
-			sender.sendText(chatId, messages.get("task.deadline-missing"));
+			sender.sendText(chatId, texts.get("task.deadline-missing"));
 			return;
 		}
 		if (!parsed.deadlineAt().isAfter(clock.instant())) {
-			sender.sendText(chatId, messages.get("task.deadline-past"));
+			sender.sendText(chatId, texts.get("task.deadline-past"));
 			return;
 		}
 		boolean assumed = parsed.urgency() == null;
 		Draft draft = drafts.create(chatId, parsed.title(), assumed ? Urgency.MEDIUM : parsed.urgency(), assumed,
-				parsed.startAt(), parsed.deadlineAt());
+				parsed.startAt(), parsed.deadlineAt(), parsed.language());
 		log.info("Draft {} created for chat {}", draft.id(), chatId);
-		sender.sendWithButtons(chatId, messages.get("task.confirm-header") + "\n\n" + summaries.summary(draft),
+		sender.sendWithButtons(chatId, texts.get("task.confirm-header") + "\n\n" + summary(texts, draft),
 				List.of(List.of(
-						new Button(messages.get("task.confirm-button"), CONFIRM_PREFIX + draft.id()),
-						new Button(messages.get("task.cancel-button"), CANCEL_PREFIX + draft.id()))));
+						new Button(texts.get("task.confirm-button"), CONFIRM_PREFIX + draft.id()),
+						new Button(texts.get("task.cancel-button"), CANCEL_PREFIX + draft.id()))));
 	}
 
 	/** Returns the transcript, or null after telling the owner why there is none. */
@@ -130,6 +132,7 @@ public class CreateTaskFromVoiceService implements CreateTaskFromVoiceUseCase {
 			sender.sendText(chatId, messages.get("task.draft-gone"));
 			return;
 		}
+		Messages texts = messages.forLanguage(draft.language());
 		Instant now = clock.instant();
 		Task task;
 		try {
@@ -138,7 +141,7 @@ public class CreateTaskFromVoiceService implements CreateTaskFromVoiceUseCase {
 		}
 		catch (TaskValidationException ex) {
 			log.info("Draft {} could not become a task: {}", draft.id(), ex.rule());
-			show(chatId, messageId, messages.get("task.deadline-past"));
+			show(chatId, messageId, texts.get("task.deadline-past"));
 			return;
 		}
 		try {
@@ -148,13 +151,13 @@ public class CreateTaskFromVoiceService implements CreateTaskFromVoiceUseCase {
 			log.warn("Saving task {} failed: {}", task.id(), ex.getClass().getSimpleName());
 			if (!alreadyStored(task.id())) {
 				drafts.restore(draft);
-				sender.sendText(chatId, messages.get("task.save-failed"));
+				sender.sendText(chatId, texts.get("task.save-failed"));
 				return;
 			}
 		}
 		log.info("Task {} saved for chat {}", task.id(), chatId);
-		show(chatId, messageId, messages.get("task.saved-header") + "\n\n" + summaries.summary(draft)
-				+ "\n\n" + messages.get("task.saved-footer"));
+		show(chatId, messageId, texts.get("task.saved-header") + "\n\n" + summary(texts, draft)
+				+ "\n\n" + texts.get("task.saved-footer"));
 	}
 
 	@Override
@@ -165,7 +168,12 @@ public class CreateTaskFromVoiceService implements CreateTaskFromVoiceUseCase {
 			return;
 		}
 		log.info("Draft {} canceled", draft.id());
-		show(chatId, messageId, messages.get("task.canceled-header") + "\n\n" + summaries.summary(draft));
+		Messages texts = messages.forLanguage(draft.language());
+		show(chatId, messageId, texts.get("task.canceled-header") + "\n\n" + summary(texts, draft));
+	}
+
+	private String summary(Messages texts, Draft draft) {
+		return new TaskSummaryFormatter(texts, zone).summary(draft);
 	}
 
 	/** A retry after a save that did commit finds the row already there: that is a success, not a failure. */

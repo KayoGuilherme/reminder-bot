@@ -23,6 +23,18 @@ public class Messages {
 		this.locale = locale;
 	}
 
+	/**
+	 * The same texts in the language of a message: {@code "pt-BR"} or {@code "en"}. Anything else (including null)
+	 * keeps the configured language.
+	 */
+	public Messages forLanguage(String languageTag) {
+		if ("pt-BR".equals(languageTag) || "en".equals(languageTag)) {
+			Locale requested = Locale.forLanguageTag(languageTag);
+			return requested.equals(locale) ? this : new Messages(messageSource, requested);
+		}
+		return this;
+	}
+
 	public String get(String key, Object... args) {
 		return messageSource.getMessage(key, args, locale);
 	}

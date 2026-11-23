@@ -9,7 +9,8 @@ import java.util.UUID;
  * can never create a second row.
  *
  * @param urgencyAssumed the owner gave no urgency and {@code urgency} is the default
+ * @param language       the language of the owner's message ({@code "pt-BR"} or {@code "en"}), null for the default
  */
 record Draft(UUID id, long chatId, String title, Urgency urgency, boolean urgencyAssumed, Instant startAt,
-		Instant deadlineAt, Instant expiresAt) {
+		Instant deadlineAt, Instant expiresAt, String language) {
 }
