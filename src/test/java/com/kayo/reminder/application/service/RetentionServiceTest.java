@@ -26,7 +26,7 @@ class RetentionServiceTest {
 		AppProperties base = TestProperties.of(ZoneId.of("UTC"), "en");
 		AppProperties properties = new AppProperties(base.timezone(), base.language(), base.telegram(), base.groq(),
 				base.gemini(), base.stt(), base.llm(), base.voice(), base.draft(), base.scheduler(), base.reminder(),
-				new RetentionProperties(true, days), base.resilience(), base.shutdown());
+				new RetentionProperties(true, days), base.resilience(), base.shutdown(), base.mcp());
 		return new RetentionService(repository, properties, clock);
 	}
 

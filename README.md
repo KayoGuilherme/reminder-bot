@@ -7,6 +7,7 @@ You say what to do, how urgent it is and by when. The bot shows a summary and sa
 ## Contents
 
 - [Using the bot](#using-the-bot): example phrases, commands and buttons
+- [Use it from an AI assistant (MCP)](#use-it-from-an-ai-assistant-mcp): connect Claude Desktop, Codex, OpenClaw and other MCP clients
 - [How it behaves](#how-it-behaves): reminders, retries, privacy, what is logged
 - [Configuration reference](#configuration-reference)
 - [Run on a home machine or a Raspberry Pi](#run-on-a-home-machine-or-a-raspberry-pi)
@@ -54,6 +55,76 @@ Anything else starting with `/` replies "not supported yet". Any other text or v
 
 Buttons are always answered. Pressing one twice, on an older message, or for a task that is already finished or no longer exists changes nothing and gets a polite reply. Done and Cancel race safely: if both are pressed for the same task, one wins.
 
+## Use it from an AI assistant (MCP)
+
+The bot can also act as an [MCP](https://modelcontextprotocol.io) server, so an AI assistant (Claude Desktop, Codex, OpenClaw or any other MCP client) can read and manage your tasks. It is **off by default**: nothing listens on `/mcp` until you turn it on.
+
+**Tools** (they only ever touch your own tasks):
+
+| Tool | What it does |
+| --- | --- |
+| `list_pending_tasks` | Your pending tasks, earliest deadline first, with the total. Optional `limit` (1-50, default 20). |
+| `create_task` | Saves a task right away (no Confirm step: your client asking you to approve the tool call is the confirmation). Needs `title` and a future `deadline`; optional `urgency` (`LOW`, `MEDIUM` default, `HIGH`), `startAt` and `language` (`en`, `pt-BR`). Date-times are ISO-8601 (`2026-11-25T18:00:00` is read in `APP_TIMEZONE`; `2026-11-25T18:00:00-03:00` and `...Z` keep their offset). |
+| `complete_task` / `cancel_task` | Mark a pending task done or canceled. Repeating the same call succeeds; the opposite one on a finished task is refused. |
+| `snooze_task` | Same rule as the Snooze button: +10 minutes and the reminders restart. Only for a task that was already reminded. |
+
+A refused call comes back as a tool error starting with a reason such as `DEADLINE_NOT_IN_FUTURE`, `INVALID_DATETIME`, `TASK_NOT_FOUND`, `TASK_NOT_PENDING` or `NOT_SNOOZABLE`. A task created over MCP is a normal task: you get its reminders in Telegram and can press Done, Snooze or Cancel there.
+
+**Turn it on.** Generate a token and add both lines to `.env`, then restart:
+
+```bash
+openssl rand -hex 32
+```
+
+```bash
+MCP_ENABLED=true
+MCP_TOKEN=<the generated token>
+```
+
+The bot refuses to start if MCP is enabled and the token is missing or shorter than 32 characters. Every request must send `Authorization: Bearer <token>`; anything else gets `401`. To rotate the token, change `MCP_TOKEN` and restart.
+
+**Check it** (the endpoint speaks MCP over Streamable HTTP):
+
+```bash
+curl -s http://127.0.0.1:8080/mcp \
+  -H "Authorization: Bearer $MCP_TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"1"}}}'
+```
+
+The answer names the server `reminder-bot`; the same request without the header answers `401`. The [MCP Inspector](https://github.com/modelcontextprotocol/inspector) (`npx @modelcontextprotocol/inspector`, transport "Streamable HTTP", URL `http://127.0.0.1:8080/mcp`, header `Authorization: Bearer <token>`) lets you call the tools by hand.
+
+**Connect a client.** Use the URL of the bot (`http://127.0.0.1:8080/mcp` with the local compose setup) and the token:
+
+- **Codex** (`~/.codex/config.toml`), with the token in an environment variable:
+
+  ```toml
+  [mcp_servers.reminder]
+  url = "http://127.0.0.1:8080/mcp"
+  bearer_token_env_var = "REMINDER_MCP_TOKEN"
+  ```
+
+- **Claude Desktop** only starts local programs, so it reaches the bot through the `mcp-remote` proxy (needs Node.js). In `claude_desktop_config.json`:
+
+  ```json
+  {
+    "mcpServers": {
+      "reminder": {
+        "command": "npx",
+        "args": ["-y", "mcp-remote", "http://127.0.0.1:8080/mcp", "--header", "Authorization:${REMINDER_AUTH}"],
+        "env": { "REMINDER_AUTH": "Bearer <token>" }
+      }
+    }
+  }
+  ```
+
+  Add `--allow-http` to the arguments if the URL is plain HTTP on another machine.
+
+- **OpenClaw and other clients** that support a remote MCP server over Streamable HTTP: give them the URL and the header `Authorization: Bearer <token>` in whatever form that client's MCP settings use.
+
+**Keep it private.** The token gives full access to your task list, so treat it like the bot token. The app is not published by `docker-compose.yml`; on a server do not open port 8080 to the internet. Either publish it on localhost only (`ports: ["127.0.0.1:8080:8080"]` under `app`) and reach it through an SSH tunnel (`ssh -L 8080:127.0.0.1:8080 user@server`), or put it behind a VPN or a TLS reverse proxy or tunnel. The token is sent in clear text over plain HTTP, so use TLS on anything that is not localhost. Task titles are text written by you, so a connected assistant reads them as data; the tools cannot send messages or do anything outside your tasks.
+
 ## How it behaves
 
 - **Long polling:** the bot needs outbound HTTPS to `api.telegram.org` and **no inbound port**.
@@ -66,8 +137,8 @@ Buttons are always answered. Pressing one twice, on an older message, or for a t
 - **Startup check:** right after starting, the bot asks Telegram which bot the token belongs to. A rejected token is logged as an `ERROR` naming `TELEGRAM_BOT_TOKEN`; an unreachable Telegram is only a `WARN`. The app keeps running either way. See [Troubleshooting](#troubleshooting).
 - **Graceful stop:** on `docker stop` / `docker compose stop` the bot lets the reminder run in progress finish (up to `APP_SHUTDOWN_TIMEOUT`, 30 s) before exiting. Compose allows 45 s before killing the container.
 - **Language:** the bot answers a voice note or text **in the language you used** (Portuguese or English): the confirmation, the buttons, and the saved/canceled messages. Anything not tied to a task message (`/start`, `/tasks`, reminders, errors before the message was understood) uses `APP_LANGUAGE`. Texts are in `messages.properties` (English) and `messages_pt_BR.properties`.
-- **Privacy:** voice notes are sent to Groq for transcription and the transcribed text to the LLM provider. Audio, transcripts, task text and API keys are **never written to the logs** at any level; logs contain only ids, counts, durations, failure kinds and HTTP status codes. Every log line of one Telegram update or scheduled run carries the same short correlation id (the `[abc12345]` after the level), so one message can be followed through the log; lines outside an update show `[-]`.
-- **Only health and info endpoints** are exposed (`/actuator/health` with liveness and readiness probes, `/actuator/info`).
+- **Privacy:** voice notes are sent to Groq for transcription and the transcribed text to the LLM provider. Audio, transcripts, task text, tool arguments of the MCP endpoint and API keys and tokens are **never written to the logs** at any level; logs contain only ids, counts, durations, failure kinds and HTTP status codes. Every log line of one Telegram update or scheduled run carries the same short correlation id (the `[abc12345]` after the level), so one message can be followed through the log; lines outside an update show `[-]`.
+- **Only health and info management endpoints** are exposed (`/actuator/health` with liveness and readiness probes, `/actuator/info`). The optional `/mcp` endpoint is an application endpoint protected by its own token.
 
 ## Configuration reference
 
@@ -105,6 +176,8 @@ Everything is configured with environment variables (a `.env` file next to `dock
 | `APP_TELEGRAM_READ_TIMEOUT` | `30s` | Read timeout of the Telegram client (greater than zero) |
 | `APP_SHUTDOWN_TIMEOUT` | `30s` | How long a stop waits for the run in progress (greater than zero) |
 | `APP_TELEGRAM_ENABLED` | `true` | `false` starts the app without ever connecting to Telegram |
+| `MCP_ENABLED` | `false` | `true` serves the MCP endpoint `/mcp` (see [Use it from an AI assistant](#use-it-from-an-ai-assistant-mcp)) |
+| `MCP_TOKEN` | empty | Bearer token of the MCP endpoint, at least 32 characters, required when `MCP_ENABLED=true`. Never logged. Generate with `openssl rand -hex 32`. |
 | `POSTGRES_DB` | `reminder` | Name of the compose database |
 | `JAVA_OPTS` | 75% of RAM as max heap | JVM options. On a machine with 1 GB of RAM use `-Xmx256m -XX:+ExitOnOutOfMemoryError -Duser.timezone=UTC`. |
 | `APP_IMAGE` | `reminder-bot:local` | Image to run, e.g. `ghcr.io/<owner>/<repo>:latest` |

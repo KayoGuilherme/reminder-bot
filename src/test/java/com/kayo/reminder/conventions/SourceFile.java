@@ -11,7 +11,7 @@ public class SourceFile {
 	public static final String BASE_PACKAGE = "com.kayo.reminder";
 	public static final List<String> PACKAGES = List.of("domain.models", "domain.models.enums", "domain.exceptions",
 			"domain.repositories", "application.dto.request", "application.dto.response", "application.service",
-			"application.component", "transport.telegram", "transport.stt", "transport.llm", "transport.http",
+			"application.component", "transport.telegram", "transport.stt", "transport.llm", "transport.http", "transport.mcp",
 			"config");
 
 	String path;

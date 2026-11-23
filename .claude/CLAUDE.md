@@ -6,7 +6,7 @@ Java 21 + Spring Boot, PostgreSQL, Flyway. A Telegram bot that turns a voice not
 
 - Only the Telegram user in `TELEGRAM_ALLOWED_USER_ID` is served; anyone else gets no reply.
 - A voice note or text becomes a task through transcription and an LLM parser; the title, urgency and deadline come from it.
-- A task is saved only after the user presses **Confirm**. A draft expires after `APP_DRAFT_TTL` and pressing a button twice never creates a duplicate.
+- A task made from Telegram is saved only after the user presses **Confirm**. A draft expires after `APP_DRAFT_TTL` and pressing a button twice never creates a duplicate. The only exception is the MCP tool `create_task`, which saves right away because the MCP client's own tool approval is the confirmation; it keeps every validation rule.
 - A message without a deadline, or with a deadline already in the past, is refused and nothing is saved.
 - Urgency decides the reminder stages before the deadline: LOW one, MEDIUM two, HIGH three. A stage is recorded only after Telegram accepted the message, so nothing is sent twice and a failed send is retried.
 - `DONE` and `CANCELED` tasks never get reminders. Snooze moves the deadline 10 minutes ahead and restarts the cycle.
@@ -34,6 +34,7 @@ com.kayo.reminder
 │   ├── telegram/      bot, update consumer, sender, downloader, update mapper, allowlist
 │   ├── stt/           speech to text client and its payload
 │   ├── llm/           task parser client, its prompt, its validator and its payload
+│   ├── mcp/           MCP server for AI clients: tool class, tool guard and bearer-token filter
 │   └── http/          shared RestClient factory and retry
 └── config/            Spring configuration and properties
 ```

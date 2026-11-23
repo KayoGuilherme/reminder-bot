@@ -61,6 +61,9 @@ public class AppProperties {
 	@Valid
 	private final ShutdownProperties shutdown;
 
+	@Valid
+	private final McpProperties mcp;
+
 	public AppProperties(
 			ZoneId timezone,
 			@DefaultValue("en") String language,
@@ -75,7 +78,8 @@ public class AppProperties {
 			@DefaultValue ReminderProperties reminder,
 			@DefaultValue RetentionProperties retention,
 			@DefaultValue ResilienceProperties resilience,
-			@DefaultValue ShutdownProperties shutdown) {
+			@DefaultValue ShutdownProperties shutdown,
+			@DefaultValue McpProperties mcp) {
 		this.timezone = timezone;
 		this.language = language;
 		this.telegram = telegram;
@@ -90,5 +94,6 @@ public class AppProperties {
 		this.retention = retention;
 		this.resilience = resilience;
 		this.shutdown = shutdown;
+		this.mcp = mcp;
 	}
 }
