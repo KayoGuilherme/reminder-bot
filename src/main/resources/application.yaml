@@ -21,6 +21,17 @@ spring:
           time_zone: UTC
   flyway:
     enabled: true
+  ai:
+    mcp:
+      server:
+        enabled: ${MCP_ENABLED:false}
+        annotation-scanner:
+          enabled: ${MCP_ENABLED:false}
+        name: reminder-bot
+        protocol: streamable
+        type: sync
+        streamable-http:
+          mcp-endpoint: /mcp
   # Graceful shutdown: a reminder or cleanup run in progress is allowed to finish (up to this long) before exit.
   lifecycle:
     timeout-per-shutdown-phase: ${APP_SHUTDOWN_TIMEOUT:30s}
@@ -78,6 +89,9 @@ app:
     retry-backoff: ${APP_RETRY_BACKOFF:500ms}
   shutdown:
     timeout: ${APP_SHUTDOWN_TIMEOUT:30s}
+  mcp:
+    enabled: ${MCP_ENABLED:false}
+    token: ${MCP_TOKEN:}
 
 management:
   endpoints:
@@ -101,3 +115,9 @@ logging:
     # the LLM prompt). Pinned so that turning on root DEBUG can never write what the owner said to the logs.
     org.springframework.web.client: INFO
     org.springframework.http.converter: INFO
+    # The MCP SDK logs every JSON-RPC message at DEBUG, which carries task titles and tool results. Pinned so that
+    # turning on root DEBUG can never write what the owner or an AI client said to the logs.
+    io.modelcontextprotocol: INFO
+    org.springframework.ai: INFO
+    # Hibernate prints every flushed entity, title included, at DEBUG.
+    org.hibernate.orm.core: INFO

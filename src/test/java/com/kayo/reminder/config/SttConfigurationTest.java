@@ -20,7 +20,7 @@ class SttConfigurationTest {
 					base.groq(), base.gemini(),
 					new SttProperties("pt", "m", server.baseUrl(), Duration.ofSeconds(2), Duration.ofSeconds(5)),
 					base.llm(), base.voice(), base.draft(), base.scheduler(), base.reminder(), base.retention(),
-					new ResilienceProperties(Duration.ofMillis(300)), base.shutdown());
+					new ResilienceProperties(Duration.ofMillis(300)), base.shutdown(), base.mcp());
 			Transcriber port = new SttConfiguration().transcriptionPort(properties);
 
 			long start = System.nanoTime();

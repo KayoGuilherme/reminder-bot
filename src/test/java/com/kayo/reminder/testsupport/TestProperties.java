@@ -5,6 +5,7 @@ import com.kayo.reminder.config.DraftProperties;
 import com.kayo.reminder.config.GeminiProperties;
 import com.kayo.reminder.config.GroqProperties;
 import com.kayo.reminder.config.LlmProperties;
+import com.kayo.reminder.config.McpProperties;
 import com.kayo.reminder.config.ReminderProperties;
 import com.kayo.reminder.config.ResilienceProperties;
 import com.kayo.reminder.config.RetentionProperties;
@@ -44,6 +45,6 @@ public final class TestProperties {
 				new ReminderProperties(Duration.ofMinutes(2), 10),
 				new RetentionProperties(true, 30),
 				new ResilienceProperties(Duration.ofMillis(500)),
-				new ShutdownProperties(Duration.ofSeconds(30)));
+				new ShutdownProperties(Duration.ofSeconds(30)), new McpProperties(false, ""));
 	}
 }

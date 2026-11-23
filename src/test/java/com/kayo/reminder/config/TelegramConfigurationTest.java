@@ -23,7 +23,7 @@ class TelegramConfigurationTest {
 				new TelegramProperties(telegram.botToken(), telegram.allowedUserId(), true, telegram.retry(),
 						connect, read),
 				base.groq(), base.gemini(), base.stt(), base.llm(), base.voice(), base.draft(), base.scheduler(),
-				base.reminder(), base.retention(), base.resilience(), base.shutdown());
+				base.reminder(), base.retention(), base.resilience(), base.shutdown(), base.mcp());
 	}
 
 	@Test
