@@ -62,7 +62,7 @@ Tests start a real PostgreSQL with Testcontainers, so Docker must be running. Th
 ## CI and image publishing
 
 - **`ci`** (`.github/workflows/ci.yml`): on pull requests and pushes to `main`, runs `./mvnw -B verify` on Java 21.
-- **`docker`** (`.github/workflows/docker.yml`): after `ci` succeeds on a push to `main`, builds the image and pushes it to `ghcr.io/<owner>/<repo>` tagged with the commit SHA and `latest`, using `GITHUB_TOKEN`. Nothing is deployed automatically.
+- **`docker`** (`.github/workflows/docker.yml`): after `ci` succeeds on a push to `main`, builds the image and pushes it to `ghcr.io/<owner>/<repo>` tagged with the commit SHA and `latest`, using `GITHUB_TOKEN`. The same workflow then runs a `deploy` job that updates the VM over SSH (see "Automatic deploy" below); it needs four repository secrets.
 
 ## Run the published image (server, home machine, Raspberry Pi)
 
@@ -144,3 +144,34 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 **Oracle reclaims idle free-tier instances** (CPU, network and memory all very low for 7 days). A bot that is polling and rarely used can trigger this; check the instance occasionally, or upgrade the account to Pay As You Go (still free within the Always Free limits).
 
 Update with `docker compose pull app && docker compose up -d`.
+
+### Automatic deploy (push to `main` updates the VM)
+
+After the image is published, the `deploy` job in `docker.yml` connects to the VM and runs `docker compose pull app && docker compose up -d`. The bot is restarted with the new image (about a minute of downtime on the 1 GB shape).
+
+**One-time setup**
+
+1. On your PC, create a key used only for deploys:
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/bot_deploy -N "" -C github-deploy
+```
+
+2. On the VM, authorize it so that it can run **only** the update command (nothing else, no shell):
+
+```bash
+echo "command=\"cd /home/ubuntu/bot && docker compose pull app && docker compose up -d && docker image prune -f\",restrict $(cat ~/bot_deploy.pub)" >> ~/.ssh/authorized_keys
+```
+
+(copy `~/.ssh/bot_deploy.pub` to the VM first, e.g. with `scp`).
+
+3. In GitHub: **Settings → Secrets and variables → Actions → New repository secret**:
+
+| Secret | Value |
+| --- | --- |
+| `VM_HOST` | the VM public IP |
+| `VM_USER` | `ubuntu` |
+| `VM_SSH_KEY` | full contents of `~/.ssh/bot_deploy` (the private key) |
+| `VM_KNOWN_HOSTS` | output of `ssh-keyscan -t ed25519 <VM_IP>` run on your PC |
+
+The VM's public IP must stay the same. If you stop and recreate the instance, update `VM_HOST` and `VM_KNOWN_HOSTS`.
