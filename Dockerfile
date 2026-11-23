@@ -6,7 +6,7 @@ WORKDIR /workspace
 
 # Cache dependencies in their own layer: only re-runs when pom.xml changes.
 COPY .mvn/ .mvn/
-COPY mvnw pom.xml ./
+COPY mvnw pom.xml lombok.config ./
 RUN ./mvnw -B -q dependency:go-offline
 
 COPY src/ src/
